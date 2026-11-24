@@ -1,0 +1,2232 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>進路学習：正規雇用 vs 非正規雇用 生涯年収シミュレーター</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tone.js (効果音用：外部音声ファイル不要) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <!-- Google Fonts: 日本語と数字が読みやすいフォント -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Noto Sans JP"', '"Inter"', 'sans-serif'],
+            num: ['"Inter"', '"Noto Sans JP"', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    /* =========================================================
+       ベースレイアウト・アニメーション定義
+       ========================================================= */
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overscroll-behavior: none;
+      background-color: #f1f5f9;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* 数字の桁ブレを防ぐ等幅数字 */
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* タイムラインスライダーのカスタマイズ（iPadで指で操作しやすい大きめツマミ） */
+    input[type="range"].age-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      cursor: pointer;
+    }
+    input[type="range"].age-slider::-webkit-slider-runnable-track {
+      height: 10px;
+      border-radius: 9999px;
+      background: #e2e8f0;
+    }
+    input[type="range"].age-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 28px;
+      height: 28px;
+      border-radius: 9999px;
+      background: #0f172a;
+      border: 4px solid #ffffff;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.35);
+      margin-top: -9px;
+      transition: transform 0.12s ease;
+    }
+    input[type="range"].age-slider:active::-webkit-slider-thumb {
+      transform: scale(1.15);
+    }
+
+    /* コイン落下・ポップアップアニメーション */
+    @keyframes floatUpFade {
+      0% {
+        opacity: 0;
+        transform: translateY(10px) scale(0.8);
+      }
+      20% {
+        opacity: 1;
+        transform: translateY(0px) scale(1.05);
+      }
+      80% {
+        opacity: 1;
+        transform: translateY(-22px) scale(1);
+      }
+      100% {
+        opacity: 0;
+        transform: translateY(-34px) scale(0.95);
+      }
+    }
+    .animate-float-up {
+      animation: floatUpFade 0.85s ease-out forwards;
+    }
+
+    /* マイルストーン達成時のバウンス */
+    @keyframes popIn {
+      0% { transform: scale(0.6); opacity: 0; }
+      70% { transform: scale(1.12); opacity: 1; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .animate-pop-in {
+      animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+
+    /* イベント発生時のカード揺れ演出 */
+    @keyframes gentleShake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-4px); }
+      40% { transform: translateX(4px); }
+      60% { transform: translateX(-3px); }
+      80% { transform: translateX(3px); }
+    }
+    .animate-shake {
+      animation: gentleShake 0.42s ease-in-out;
+    }
+
+    /* ズームステージ用のスムーズ設定 */
+    #zoom-viewport {
+      touch-action: pan-x pan-y;
+      -webkit-overflow-scrolling: touch;
+    }
+    #zoom-stage {
+      transform-origin: top left;
+      transition: transform 0.14s ease-out;
+    }
+    #zoom-stage.pinching {
+      transition: none;
+    }
+
+    /* スクロールバーの控えめな装飾 */
+    #zoom-viewport::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    #zoom-viewport::-webkit-scrollbar-thumb {
+      background: rgba(100, 116, 139, 0.35);
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+
+<body class="text-slate-800 select-none overflow-hidden flex flex-col h-[100dvh]">
+
+  <!-- =========================================================
+       上部ヘッダー（固定：タイトル・ズーム操作・音声・設定）
+       ========================================================= -->
+  <header class="shrink-0 bg-white/95 backdrop-blur border-b border-slate-200 px-3 py-2 flex items-center justify-between gap-2 z-30 shadow-sm">
+    <!-- アプリタイトル -->
+    <div class="flex items-center gap-2 min-w-0">
+      <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-sm shadow-sm shrink-0">
+        ¥
+      </div>
+      <div class="truncate">
+        <h1 class="text-sm sm:text-base font-extrabold text-slate-900 leading-tight truncate">
+          生涯年収シミュレーター
+        </h1>
+        <p class="text-[10px] sm:text-xs text-slate-500 leading-tight truncate">
+          働き方の「仕組み」で変わる収入のちがい（22歳〜65歳）
+        </p>
+      </div>
+    </div>
+
+    <!-- 右側ツール群：拡大縮小コントロール ＋ 音声 ＋ モデル説明 -->
+    <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+      <!-- ズームコントロール（iPadや電子黒板で見やすく拡大縮小） -->
+      <div class="flex items-center bg-slate-100 rounded-xl p-0.5 border border-slate-200" aria-label="画面の拡大縮小">
+        <button id="btn-zoom-out" type="button" title="縮小"
+          class="w-8 h-8 sm:w-9 sm:h-8 rounded-lg flex items-center justify-center text-slate-700 hover:bg-white active:scale-95 font-bold text-base transition">
+          −
+        </button>
+        <button id="btn-zoom-reset" type="button" title="100%に戻す"
+          class="px-2 h-8 rounded-lg text-xs font-num font-bold text-slate-700 hover:bg-white transition tabular-nums min-w-[48px]">
+          100%
+        </button>
+        <button id="btn-zoom-in" type="button" title="拡大"
+          class="w-8 h-8 sm:w-9 sm:h-8 rounded-lg flex items-center justify-center text-slate-700 hover:bg-white active:scale-95 font-bold text-base transition">
+          ＋
+        </button>
+      </div>
+
+      <!-- 効果音ON/OFF -->
+      <button id="btn-sound" type="button" title="効果音のオン・オフ"
+        class="h-9 px-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 active:scale-95 flex items-center gap-1 text-xs font-bold text-slate-700 transition">
+        <span id="sound-icon">🔊</span>
+        <span class="hidden sm:inline" id="sound-label">音ON</span>
+      </button>
+
+      <!-- モデル解説＆将来の拡張スロット確認モーダル -->
+      <button id="btn-info" type="button" title="データと拡張設定"
+        class="h-9 px-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 active:scale-95 flex items-center gap-1 text-xs font-bold text-slate-700 transition">
+        <span>⚙</span>
+        <span class="hidden md:inline">設定・データ</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- =========================================================
+       ワンタップ・モード切替バー（固定：ズーム中もすぐ切替可能）
+       ========================================================= -->
+  <div class="shrink-0 bg-slate-50/95 backdrop-blur border-b border-slate-200 px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 z-20">
+    <!-- ① 額面 vs 自由に使えるお金（ワンタップ2択セグメント） -->
+    <div class="flex items-center gap-1.5 flex-wrap">
+      <div class="inline-flex items-center bg-slate-200/80 p-0.5 rounded-xl border border-slate-200" role="group" aria-label="表示モード切替">
+        <button id="btn-mode-gross" type="button"
+          class="px-2.5 sm:px-3 py-1 rounded-lg text-xs font-extrabold bg-white text-slate-900 shadow-sm flex items-center gap-1 transition active:scale-95">
+          <span>💰</span>
+          <span>額面（年収）</span>
+        </button>
+        <button id="btn-mode-disposable" type="button"
+          class="px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 transition active:scale-95">
+          <span>🏠</span>
+          <span>自由に使えるお金</span>
+        </button>
+      </div>
+      <span id="mode-hint-text" class="text-[11px] text-slate-500 font-medium hidden lg:inline">
+        税金や生活費を引く前の「総収入」で比較中
+      </span>
+    </div>
+
+    <!-- ② もしもイベント発生スイッチ（ワンタップON/OFF） -->
+    <button id="btn-toggle-events" type="button" aria-pressed="false"
+      class="px-3 py-1 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 active:scale-95 flex items-center gap-2 text-xs font-bold text-slate-700 transition shadow-sm">
+      <span class="flex items-center gap-1">
+        <span id="event-switch-icon">⚡</span>
+        <span>もしもイベント</span>
+      </span>
+      <!-- トグルピル -->
+      <span id="event-switch-pill" class="w-9 h-5 rounded-full bg-slate-300 relative transition-colors duration-200 inline-flex items-center px-0.5">
+        <span id="event-switch-knob" class="w-4 h-4 rounded-full bg-white shadow-sm transform translate-x-0 transition-transform duration-200"></span>
+      </span>
+      <span id="event-switch-label" class="text-[11px] font-extrabold text-slate-500 min-w-[24px] text-left">OFF</span>
+    </button>
+  </div>
+
+  <!-- =========================================================
+       メインステージ（ズーム可能ビューポート：100%時はiPadの1画面にフィット）
+       ========================================================= -->
+  <main id="zoom-viewport" class="flex-1 overflow-auto relative bg-slate-100">
+    <!-- ズーム時にスクロール領域を正確に確保するためのサイザー -->
+    <div id="zoom-sizer" class="w-full h-full">
+      <!-- 実際に拡大縮小されるステージ本体 -->
+      <div id="zoom-stage" class="w-full min-h-full lg:h-full md:h-full p-2 sm:p-3 flex flex-col gap-2 sm:gap-2.5 max-w-[1360px] mx-auto">
+
+        <!-- 1. 年齢タイムライン & 差額ハイライトバー -->
+        <section class="shrink-0 bg-white rounded-2xl border border-slate-200/80 shadow-sm px-3 py-2 sm:px-4 sm:py-2.5 flex flex-col md:flex-row items-stretch md:items-center gap-2.5 md:gap-4">
+          <!-- 現在の年齢表示 -->
+          <div class="flex items-center justify-between md:justify-start gap-3 shrink-0">
+            <div class="flex items-baseline gap-1.5">
+              <span class="text-xs font-bold text-slate-500">現在</span>
+              <span id="display-age" class="text-3xl sm:text-4xl font-num font-black text-slate-900 tabular-nums leading-none">22</span>
+              <span class="text-sm sm:text-base font-bold text-slate-700">歳</span>
+            </div>
+            <span id="display-stage-badge" class="px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+              新社会人スタート
+            </span>
+          </div>
+
+          <!-- インタラクティブ・タイムライン -->
+          <div class="flex-1 flex flex-col justify-center gap-1 min-w-0">
+            <div class="flex items-center gap-2">
+              <span class="text-[11px] font-num font-bold text-slate-400">22歳</span>
+              <input id="age-slider" type="range" min="22" max="65" step="0.1" value="22" class="age-slider flex-1" aria-label="年齢スライダー">
+              <span class="text-[11px] font-num font-bold text-slate-400">65歳</span>
+            </div>
+            <!-- 授業でパッと止めやすい年齢ショートカットボタン -->
+            <div class="flex items-center justify-between gap-1">
+              <div class="flex items-center gap-1 flex-wrap">
+                <button type="button" data-jump-age="22" class="jump-btn px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 transition">22歳</button>
+                <button type="button" data-jump-age="30" class="jump-btn px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 transition">30歳</button>
+                <button type="button" data-jump-age="35" id="jump-ev-35" class="jump-btn hidden px-2 py-0.5 rounded-md text-[11px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition" title="35歳：入院イベントを見る">⚡35歳</button>
+                <button type="button" data-jump-age="40" class="jump-btn px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 transition">40歳</button>
+                <button type="button" data-jump-age="45" id="jump-ev-45" class="jump-btn hidden px-2 py-0.5 rounded-md text-[11px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition" title="45歳：不景気イベントを見る">⚡45歳</button>
+                <button type="button" data-jump-age="50" class="jump-btn px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 transition">50歳</button>
+                <button type="button" data-jump-age="65" class="jump-btn px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 transition">65歳</button>
+              </div>
+              <span id="work-years-label" class="text-[11px] text-slate-400 font-medium hidden sm:inline tabular-nums">勤務 1年目</span>
+            </div>
+          </div>
+
+          <!-- ふたりの差額ハイライト -->
+          <div class="shrink-0 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-xl px-3.5 py-2 flex items-center justify-between md:justify-center gap-3 shadow-inner md:min-w-[285px]">
+            <div>
+              <div class="flex items-center gap-1.5">
+                <span id="diff-title-label" class="text-[10px] font-bold text-slate-300 tracking-wide">これまでの累計の差</span>
+                <span id="display-ratio-badge" class="px-1.5 py-0.5 rounded-md text-[10px] font-num font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 tabular-nums">
+                  約1.0倍
+                </span>
+              </div>
+              <div id="display-diff-total" class="text-xl sm:text-2xl font-num font-black text-emerald-300 tabular-nums leading-tight">
+                +0万円
+              </div>
+            </div>
+            <div class="text-right border-l border-slate-700 pl-3">
+              <div class="text-[10px] text-slate-400 font-medium">差額のめやす</div>
+              <div id="display-diff-equiv" class="text-xs font-bold text-amber-200 leading-snug max-w-[125px]">
+                スタートライン
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. 左右比較エリア（正規雇用 vs 非正規雇用） -->
+        <section class="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3">
+
+          <!-- ========== 左カード：正規雇用モデル ========== -->
+          <article id="card-regular" class="bg-white rounded-2xl border-2 border-blue-200/90 shadow-sm p-3 sm:p-3.5 flex flex-col justify-between relative overflow-hidden">
+            <!-- 背景のやさしい装飾 -->
+            <div class="absolute -right-8 -top-8 w-28 h-28 rounded-full bg-blue-50/80 pointer-events-none"></div>
+
+            <!-- カード上部：タイトルと特徴タグ -->
+            <div class="flex items-start justify-between gap-2 relative z-10">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="w-3 h-3 rounded-full bg-blue-600 inline-block"></span>
+                  <h2 class="text-base sm:text-lg font-black text-slate-900">正規雇用（正社員）</h2>
+                </div>
+                <div class="flex flex-wrap gap-1 mt-1">
+                  <span class="px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-100">定期昇給あり</span>
+                  <span class="px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">ボーナス年2回</span>
+                  <span id="reg-event-chip" class="hidden px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200"></span>
+                </div>
+              </div>
+              <!-- その年の年収／自由資金バッジ -->
+              <div class="text-right bg-blue-50/90 border border-blue-100 rounded-xl px-2.5 py-1 shrink-0">
+                <div id="reg-annual-label" class="text-[10px] font-bold text-blue-700">この年の年収</div>
+                <div id="reg-annual" class="text-base sm:text-lg font-num font-black text-blue-900 tabular-nums leading-tight">280万円</div>
+              </div>
+            </div>
+
+            <!-- カード中央：キャラクター＋累計金額 ＋ 積み上げタワー -->
+            <div class="flex-1 flex items-center gap-3 my-1.5 min-h-[112px] relative z-10">
+              <!-- 左側：キャラSVG & 累計金額 -->
+              <div class="flex-1 flex flex-col justify-center gap-1.5 min-w-0">
+                <div class="flex items-center gap-2.5">
+                  <!-- キャラクターイラスト（インラインSVG） -->
+                  <div class="relative w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0">
+                    <svg viewBox="0 0 64 64" class="w-12 h-12 sm:w-14 sm:h-14" aria-hidden="true">
+                      <!-- 体（スーツ） -->
+                      <path d="M14 58 C14 44, 22 40, 32 40 C42 40, 50 44, 50 58 Z" fill="#2563EB"/>
+                      <!-- シャツ＆ネクタイ -->
+                      <polygon points="27,40 37,40 32,51" fill="#FFFFFF"/>
+                      <polygon points="31,42 33,42 34,53 32,56 30,53" fill="#1E3A8A"/>
+                      <!-- 頭 -->
+                      <circle cx="32" cy="24" r="13" fill="#FDE68A"/>
+                      <!-- 髪 -->
+                      <path d="M19 22 C19 12, 26 9, 32 9 C39 9, 45 13, 45 22 C42 17, 36 15, 30 16 C25 16, 21 18, 19 22 Z" fill="#1E293B"/>
+                      <!-- 表情 -->
+                      <circle cx="27" cy="25" r="1.6" fill="#1E293B"/>
+                      <circle cx="37" cy="25" r="1.6" fill="#1E293B"/>
+                      <path d="M28 30 Q32 33 36 30" stroke="#1E293B" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+                    </svg>
+                    <!-- ボーナス発生ポップアップ用コンテナ -->
+                    <div id="reg-fx-layer" class="absolute inset-0 pointer-events-none overflow-visible"></div>
+                  </div>
+                  <div class="min-w-0">
+                    <div id="reg-total-label" class="text-[11px] font-bold text-slate-500">これまでの累計収入</div>
+                    <div id="reg-total" class="text-2xl sm:text-3xl font-num font-black text-blue-700 tabular-nums leading-tight truncate">
+                      0万円
+                    </div>
+                    <div id="reg-breakdown" class="text-[10px] sm:text-[11px] text-slate-500 tabular-nums">
+                      月給 約20.0万 ＋ 賞与 約40万
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 進捗ゲージ（視覚的バー） -->
+                <div class="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden border border-slate-200/70">
+                  <div id="reg-bar-h" class="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full transition-all duration-100" style="width: 1%;"></div>
+                </div>
+              </div>
+
+              <!-- 右側：お金の積み上げタワー（左右で同じ最大スケールで比較） -->
+              <div class="w-20 sm:w-24 h-full min-h-[110px] max-h-[168px] bg-slate-50 rounded-xl border border-slate-200/80 p-1.5 flex flex-col justify-end relative shrink-0">
+                <!-- 目盛り線（モードに応じて自動変化） -->
+                <div id="reg-tick-mid" class="absolute inset-x-1 border-t border-dashed border-slate-300 text-[9px] text-slate-400 font-num pr-0.5 text-right pointer-events-none" style="bottom: 43.5%;">1億</div>
+                <div id="reg-tick-top" class="absolute inset-x-1 border-t border-dashed border-slate-300 text-[9px] text-slate-400 font-num pr-0.5 text-right pointer-events-none" style="bottom: 87%;">2億</div>
+                <!-- コインタワー本体 -->
+                <div id="reg-tower" class="w-full rounded-lg bg-gradient-to-t from-blue-600 via-blue-500 to-sky-400 relative overflow-hidden shadow-inner" style="height: 2%;">
+                  <!-- コインの横縞模様 -->
+                  <div class="w-full h-full opacity-25" style="background-image: repeating-linear-gradient(0deg, #fff, #fff 2px, transparent 2px, transparent 8px);"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- カード下部：ライフマイルストーン（お金を実感できるアイコン） -->
+            <div class="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-2 relative z-10">
+              <span id="reg-ms-label" class="text-[10px] sm:text-[11px] font-bold text-slate-400 shrink-0">収入のめやす</span>
+              <div id="reg-milestones" class="flex items-center gap-1.5 flex-wrap justify-end">
+                <!-- JSで動的に点灯 -->
+              </div>
+            </div>
+          </article>
+
+          <!-- ========== 右カード：非正規雇用モデル ========== -->
+          <article id="card-nonreg" class="bg-white rounded-2xl border-2 border-amber-200/90 shadow-sm p-3 sm:p-3.5 flex flex-col justify-between relative overflow-hidden">
+            <!-- 背景のやさしい装飾 -->
+            <div class="absolute -right-8 -top-8 w-28 h-28 rounded-full bg-amber-50/80 pointer-events-none"></div>
+
+            <!-- カード上部：タイトルと特徴タグ -->
+            <div class="flex items-start justify-between gap-2 relative z-10">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="w-3 h-3 rounded-full bg-amber-500 inline-block"></span>
+                  <h2 class="text-base sm:text-lg font-black text-slate-900">非正規雇用（契約・アルバイト等）</h2>
+                </div>
+                <div class="flex flex-wrap gap-1 mt-1">
+                  <span class="px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-100">昇給が少なめ</span>
+                  <span class="px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold bg-orange-50 text-orange-700 border border-orange-100">ボーナスなしモデル</span>
+                  <span id="nonreg-event-chip" class="hidden px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200"></span>
+                </div>
+              </div>
+              <!-- その年の年収／自由資金バッジ -->
+              <div class="text-right bg-amber-50/90 border border-amber-100 rounded-xl px-2.5 py-1 shrink-0">
+                <div id="nonreg-annual-label" class="text-[10px] font-bold text-amber-800">この年の年収</div>
+                <div id="nonreg-annual" class="text-base sm:text-lg font-num font-black text-amber-900 tabular-nums leading-tight">225万円</div>
+              </div>
+            </div>
+
+            <!-- カード中央：キャラクター＋累計金額 ＋ 積み上げタワー -->
+            <div class="flex-1 flex items-center gap-3 my-1.5 min-h-[112px] relative z-10">
+              <!-- 左側：キャラSVG & 累計金額 -->
+              <div class="flex-1 flex flex-col justify-center gap-1.5 min-w-0">
+                <div class="flex items-center gap-2.5">
+                  <!-- キャラクターイラスト（同じくらい一生懸命働く姿として中立に描写） -->
+                  <div class="relative w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center shrink-0">
+                    <svg viewBox="0 0 64 64" class="w-12 h-12 sm:w-14 sm:h-14" aria-hidden="true">
+                      <!-- 体（ワークウェア／エプロン風カジュアル） -->
+                      <path d="M14 58 C14 44, 22 40, 32 40 C42 40, 50 44, 50 58 Z" fill="#D97706"/>
+                      <!-- インナー -->
+                      <path d="M24 41 L32 48 L40 41" fill="none" stroke="#FEF3C7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                      <!-- 頭 -->
+                      <circle cx="32" cy="24" r="13" fill="#FDE68A"/>
+                      <!-- 髪 -->
+                      <path d="M19 23 C19 12, 26 9, 32 9 C39 9, 45 13, 45 23 C42 18, 37 16, 32 16 C26 16, 22 18, 19 23 Z" fill="#334155"/>
+                      <!-- 表情 -->
+                      <circle cx="27" cy="25" r="1.6" fill="#1E293B"/>
+                      <circle cx="37" cy="25" r="1.6" fill="#1E293B"/>
+                      <path d="M28 30 Q32 33 36 30" stroke="#1E293B" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+                    </svg>
+                    <!-- 収入ポップアップ用コンテナ -->
+                    <div id="nonreg-fx-layer" class="absolute inset-0 pointer-events-none overflow-visible"></div>
+                  </div>
+                  <div class="min-w-0">
+                    <div id="nonreg-total-label" class="text-[11px] font-bold text-slate-500">これまでの累計収入</div>
+                    <div id="nonreg-total" class="text-2xl sm:text-3xl font-num font-black text-amber-600 tabular-nums leading-tight truncate">
+                      0万円
+                    </div>
+                    <div id="nonreg-breakdown" class="text-[10px] sm:text-[11px] text-slate-500 tabular-nums">
+                      月給 約18.8万 ＋ 賞与 0万
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 進捗ゲージ（左と同じ最大スケール） -->
+                <div class="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden border border-slate-200/70">
+                  <div id="nonreg-bar-h" class="h-full bg-gradient-to-r from-amber-500 to-orange-400 rounded-full transition-all duration-100" style="width: 1%;"></div>
+                </div>
+              </div>
+
+              <!-- 右側：お金の積み上げタワー（左と完全に同じスケール） -->
+              <div class="w-20 sm:w-24 h-full min-h-[110px] max-h-[168px] bg-slate-50 rounded-xl border border-slate-200/80 p-1.5 flex flex-col justify-end relative shrink-0">
+                <div id="nonreg-tick-mid" class="absolute inset-x-1 border-t border-dashed border-slate-300 text-[9px] text-slate-400 font-num pr-0.5 text-right pointer-events-none" style="bottom: 43.5%;">1億</div>
+                <div id="nonreg-tick-top" class="absolute inset-x-1 border-t border-dashed border-slate-300 text-[9px] text-slate-400 font-num pr-0.5 text-right pointer-events-none" style="bottom: 87%;">2億</div>
+                <!-- コインタワー本体 -->
+                <div id="nonreg-tower" class="w-full rounded-lg bg-gradient-to-t from-amber-600 via-amber-500 to-yellow-400 relative overflow-hidden shadow-inner" style="height: 2%;">
+                  <div class="w-full h-full opacity-25" style="background-image: repeating-linear-gradient(0deg, #fff, #fff 2px, transparent 2px, transparent 8px);"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- カード下部：ライフマイルストーン -->
+            <div class="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-2 relative z-10">
+              <span id="nonreg-ms-label" class="text-[10px] sm:text-[11px] font-bold text-slate-400 shrink-0">収入のめやす</span>
+              <div id="nonreg-milestones" class="flex items-center gap-1.5 flex-wrap justify-end">
+                <!-- JSで動的に点灯 -->
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <!-- 3. リアルタイム推移グラフ ＋ 解説コメントエリア -->
+        <section class="shrink-0 bg-white rounded-2xl border border-slate-200/80 shadow-sm p-2.5 sm:p-3 flex flex-col gap-1.5">
+          <!-- グラフヘッダー：モード切り替え & 年齢に応じた解説チップ -->
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+              <button id="tab-cumulative" type="button"
+                class="px-2.5 py-1 rounded-lg text-xs font-bold bg-white text-slate-900 shadow-sm transition">
+                累計収入（生涯年収）
+              </button>
+              <button id="tab-annual" type="button"
+                class="px-2.5 py-1 rounded-lg text-xs font-bold text-slate-500 hover:text-slate-800 transition">
+                毎年の年収カーブ
+              </button>
+            </div>
+
+            <!-- 授業のポイント解説（年齢に合わせて自動変化） -->
+            <div id="commentary-pill" class="flex items-center gap-1.5 bg-indigo-50/90 border border-indigo-100 text-indigo-900 px-3 py-1 rounded-xl text-xs font-bold flex-1 md:flex-initial min-w-[200px]">
+              <span class="text-sm shrink-0">💡</span>
+              <span id="commentary-text" class="truncate sm:whitespace-normal">再生ボタンを押して、22歳から65歳までの変化を見てみよう！</span>
+            </div>
+          </div>
+
+          <!-- レスポンシブCanvasグラフ -->
+          <div id="chart-container" class="w-full h-[130px] sm:h-[145px] md:h-[155px] relative">
+            <canvas id="income-chart" class="w-full h-full block"></canvas>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </main>
+
+  <!-- =========================================================
+       下部再生コントロールバー（固定：iPadで片手・指先で押しやすい設計）
+       ========================================================= -->
+  <footer class="shrink-0 bg-white/95 backdrop-blur border-t border-slate-200 px-3 py-2 flex items-center justify-between gap-2 z-30 shadow-[0_-2px_10px_rgba(15,23,42,0.05)]">
+    <!-- 左：1歳ずつコマ送り -->
+    <div class="flex items-center gap-1.5">
+      <button id="btn-step-back" type="button" title="1歳戻す"
+        class="h-10 px-2.5 sm:px-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 active:scale-95 text-xs sm:text-sm font-bold text-slate-700 transition">
+        ◀ -1歳
+      </button>
+      <button id="btn-step-fwd" type="button" title="1歳進める"
+        class="h-10 px-2.5 sm:px-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 active:scale-95 text-xs sm:text-sm font-bold text-slate-700 transition">
+        +1歳 ▶
+      </button>
+    </div>
+
+    <!-- 中央：メインの再生・一時停止・リセット -->
+    <div class="flex items-center gap-2">
+      <button id="btn-play" type="button"
+        class="h-10 sm:h-11 px-5 sm:px-8 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 active:scale-95 text-white font-black text-sm sm:text-base shadow-md shadow-blue-600/20 flex items-center gap-2 transition">
+        <span id="play-icon">▶</span>
+        <span id="play-text">スタート</span>
+      </button>
+
+      <button id="btn-reset" type="button" title="22歳に戻る"
+        class="h-10 sm:h-11 px-3 sm:px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 font-bold text-xs sm:text-sm flex items-center gap-1 transition">
+        <span>↺</span>
+        <span class="hidden sm:inline">最初から</span>
+      </button>
+    </div>
+
+    <!-- 右：再生スピード切り替え -->
+    <div class="flex items-center bg-slate-100 rounded-xl p-0.5 border border-slate-200" aria-label="再生スピード">
+      <button type="button" data-speed="0.5" class="speed-btn px-2 sm:px-2.5 h-9 rounded-lg text-xs font-bold text-slate-600 hover:bg-white/70 transition">0.5x</button>
+      <button type="button" data-speed="1" class="speed-btn px-2 sm:px-2.5 h-9 rounded-lg text-xs font-bold bg-white text-slate-900 shadow-sm transition">1x</button>
+      <button type="button" data-speed="2" class="speed-btn px-2 sm:px-2.5 h-9 rounded-lg text-xs font-bold text-slate-600 hover:bg-white/70 transition">2x</button>
+    </div>
+  </footer>
+
+  <!-- =========================================================
+       設定・モデルデータ確認モーダル（alert不使用・将来の拡張スロット表示）
+       ========================================================= -->
+  <div id="info-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden animate-pop-in">
+      <div class="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+        <h3 class="font-black text-slate-900 text-base">シミュレーションの設定とデータについて</h3>
+        <button id="btn-close-modal" type="button" class="w-8 h-8 rounded-lg hover:bg-slate-200 flex items-center justify-center font-bold text-slate-600">✕</button>
+      </div>
+      <div class="p-5 space-y-4 text-sm text-slate-700 max-h-[75dvh] overflow-y-auto">
+        <!-- 授業向けの配慮メッセージ -->
+        <div class="bg-blue-50 border border-blue-100 rounded-xl p-3.5 text-xs leading-relaxed text-blue-950">
+          <p class="font-bold mb-1">📘 授業で使うときのポイント</p>
+          <p>
+            このアプリは「どちらの仕事が偉いか」ではなく、<strong>「定期昇給やボーナスといった『給料の仕組み』の違いで、一生の合計がどれくらい変わるか」</strong>を客観的に知るための教材です。
+          </p>
+        </div>
+
+        <!-- 現在のモデル数値 -->
+        <div>
+          <h4 class="font-bold text-slate-900 mb-1.5 text-xs uppercase tracking-wider">現在の比較モデル（第1段階アップデート版）</h4>
+          <ul class="space-y-1.5 text-xs bg-slate-50 rounded-xl p-3 border border-slate-200/80">
+            <li><strong class="text-blue-700">● 正規雇用：</strong>22歳（年収280万）から徐々に昇給し、50代でピーク（約640万）。60歳以降は再雇用（420万）想定。退職金は含みません。</li>
+            <li><strong class="text-amber-700">● 非正規雇用：</strong>22歳（年収225万）から年齢による昇給が少なく、年収230〜255万前後で推移するモデル。</li>
+            <li><strong class="text-emerald-700">● 自由に使えるお金モード：</strong>額面から税金・社会保険料（約19〜24%）を引いた「手取り」から、最低限の生活費（月14万円＝年168万円：家賃・食費・光熱費等）を差し引いた金額を比較します。</li>
+            <li><strong class="text-rose-700">● もしもイベント：</strong>35歳「ケガ・病気で2ヶ月入院」・45歳「不景気で会社の業績悪化」の2つを発生させ、有給休暇・傷病手当・雇用の安定性の差を体感できます。</li>
+            <li class="text-slate-500 pt-1">※厚生労働省「賃金構造基本統計調査」等を参考にした中学生向けの学習モデルです。</li>
+          </ul>
+        </div>
+
+        <!-- 今後の拡張予定スロット（コード上でプラグイン追加できる構造） -->
+        <div>
+          <h4 class="font-bold text-slate-900 mb-1.5 text-xs uppercase tracking-wider">機能追加ロードマップ</h4>
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div class="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 text-emerald-900">
+              <div class="font-bold">✅ 生活費・手取り表示</div>
+              <div class="text-[11px] mt-0.5 text-emerald-700">ワンタップ切替に対応済み</div>
+            </div>
+            <div class="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 text-emerald-900">
+              <div class="font-bold">✅ もしもイベント</div>
+              <div class="text-[11px] mt-0.5 text-emerald-700">入院・不景気イベント実装済み</div>
+            </div>
+            <div class="p-2.5 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-slate-500">
+              <div class="font-bold text-slate-700">🎓 学歴コース切替</div>
+              <div class="text-[11px] mt-0.5">高卒・専門卒・大卒を追加予定</div>
+            </div>
+            <div class="p-2.5 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-slate-500">
+              <div class="font-bold text-slate-700">🔄 途中から正社員へ</div>
+              <div class="text-[11px] mt-0.5">転職・学び直し体験を追加予定</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 操作ヒント -->
+        <div class="text-xs text-slate-500 border-t border-slate-100 pt-3">
+          <strong>操作のコツ：</strong>画面右上の「＋／−」ボタンや、iPadでの<strong>2本指ピンチ操作</strong>で、グラフや数字を自由に拡大縮小できます。
+        </div>
+      </div>
+      <div class="px-5 py-3 bg-slate-50 border-t border-slate-100 text-right">
+        <button id="btn-ok-modal" type="button" class="px-5 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition">
+          とじる
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       もしもイベント発生ポップアップモーダル（再生中に自動一時停止して表示）
+       ========================================================= -->
+  <div id="event-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-xl w-full shadow-2xl border-2 border-rose-200 overflow-hidden animate-pop-in">
+      <!-- イベントヘッダー -->
+      <div class="bg-gradient-to-r from-rose-600 to-orange-500 text-white px-5 py-3.5 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5">
+          <span id="ev-modal-icon" class="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-2xl shrink-0">🏥</span>
+          <div>
+            <div id="ev-modal-age" class="text-[11px] font-bold text-rose-100 tracking-wider">⚡ 35歳 もしもイベント発生！</div>
+            <h3 id="ev-modal-title" class="font-black text-base sm:text-lg leading-tight">ケガ・病気で2ヶ月入院！</h3>
+          </div>
+        </div>
+        <button id="btn-close-event-x" type="button" class="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center font-bold text-white transition">✕</button>
+      </div>
+
+      <!-- イベント本文：正規 vs 非正規の比較カード -->
+      <div class="p-4 sm:p-5 space-y-3.5">
+        <p id="ev-modal-desc" class="text-xs sm:text-sm text-slate-700 leading-relaxed font-medium">
+          急なケガや病気で2ヶ月間働けなくなってしまいました。ふたりの生活はどう変わるかな？
+        </p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <!-- 正規雇用の結果 -->
+          <div class="rounded-xl border-2 border-blue-200 bg-blue-50/60 p-3.5 flex flex-col gap-1.5">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-black text-blue-900 flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block"></span>正規雇用
+              </span>
+              <span id="ev-modal-reg-badge" class="px-2 py-0.5 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                🛡 収入キープ
+              </span>
+            </div>
+            <div id="ev-modal-reg-impact" class="text-base font-num font-black text-blue-800 tabular-nums">
+              収入変化 0万円
+            </div>
+            <p id="ev-modal-reg-text" class="text-xs text-slate-700 leading-relaxed">
+              有給休暇や傷病手当金などの保障があり、休んでいる間も生活を守れるよ。
+            </p>
+          </div>
+
+          <!-- 非正規雇用の結果 -->
+          <div class="rounded-xl border-2 border-amber-200 bg-amber-50/70 p-3.5 flex flex-col gap-1.5">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-black text-amber-950 flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>非正規雇用
+              </span>
+              <span id="ev-modal-nonreg-badge" class="px-2 py-0.5 rounded-full text-[11px] font-black bg-rose-100 text-rose-800 border border-rose-200">
+                ⚠ 収入ダウン
+              </span>
+            </div>
+            <div id="ev-modal-nonreg-impact" class="text-base font-num font-black text-rose-600 tabular-nums">
+              収入 −40万円
+            </div>
+            <p id="ev-modal-nonreg-text" class="text-xs text-slate-700 leading-relaxed">
+              働けない期間はお給料が入らず、医療費と合わせて貯金が大きく減ってしまうよ。
+            </p>
+          </div>
+        </div>
+
+        <!-- 学びのひとこと -->
+        <div class="bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-700 flex items-start gap-2">
+          <span class="text-base shrink-0">💡</span>
+          <p id="ev-modal-takeaway" class="leading-relaxed font-medium">
+            給料の金額だけでなく、「もしもの時に生活を守ってくれる保障（セーフティネット）」も大きなちがいだよ。
+          </p>
+        </div>
+      </div>
+
+      <!-- フッターボタン -->
+      <div class="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
+        <button id="btn-event-stay" type="button" class="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-100 transition">
+          ここで止めて確認
+        </button>
+        <button id="btn-event-continue" type="button" class="px-5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs sm:text-sm font-black shadow-sm flex items-center gap-1.5 transition active:scale-95">
+          <span>▶</span>
+          <span>つづける</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       JavaScript：モジュール設計（将来の機能追加がしやすい構造）
+       ========================================================= -->
+  <script>
+    /**
+     * =========================================================================
+     * 1. シミュレーション設定・データモデル (SIMULATION_CONFIG & EMPLOYMENT_PROFILES)
+     *    ※「額面」と「自由に使えるお金（手取り−生活費）」の2モードに対応
+     * =========================================================================
+     */
+    const SIMULATION_CONFIG = {
+      startAge: 22,
+      endAge: 65,
+      // 最低限の生活費モデル（一人暮らし想定：月14万円 × 12ヶ月 = 年168万円）
+      livingCostAnnual: 168,
+      livingCostMonthly: 14,
+
+      // モードごとのスケール・目盛り・マイルストーン設定
+      modes: {
+        gross: {
+          maxScaleTotal: 23000,
+          maxScaleAnnual: 700,
+          minScaleAnnual: 0,
+          towerTicks: { midVal: 10000, midLabel: '1億', topVal: 20000, topLabel: '2億' },
+          milestones: [
+            { amount: 2500,  icon: '🚗', label: '車・趣味' },
+            { amount: 7000,  icon: '✈️', label: '旅行・貯蓄' },
+            { amount: 12000, icon: '🏠', label: 'マイホーム' },
+            { amount: 18000, icon: '🎓', label: '教育・将来' },
+            { amount: 21500, icon: '🌟', label: '老後のゆとり' },
+          ],
+          hint: '税金や生活費を引く前の「総収入」で比較中',
+          diffTitle: 'これまでの累計の差',
+          annualLabel: 'この年の年収',
+          totalLabel: 'これまでの累計収入',
+          msLabel: '収入のめやす',
+          tabCum: '累計収入（生涯年収）',
+          tabAnn: '毎年の年収カーブ',
+        },
+        disposable: {
+          maxScaleTotal: 11000,
+          maxScaleAnnual: 380,
+          minScaleAnnual: -80,
+          towerTicks: { midVal: 5000, midLabel: '5千万', topVal: 10000, topLabel: '1億' },
+          milestones: [
+            { amount: 500,  icon: '✈️', label: '旅行・推し活' },
+            { amount: 1500, icon: '🚗', label: '新車・貯蓄' },
+            { amount: 3500, icon: '🏠', label: 'マイホーム' },
+            { amount: 6000, icon: '🎓', label: '教育・将来' },
+            { amount: 8500, icon: '🌟', label: '老後のゆとり' },
+          ],
+          hint: '手取りから最低限の生活費（月14万円）を引いた「貯金や趣味に使えるお金」で比較中',
+          diffTitle: '自由に使えるお金の差',
+          annualLabel: 'この年の自由資金',
+          totalLabel: '自由に使えるお金（累計）',
+          msLabel: 'ゆとりのめやす',
+          tabCum: '自由に使えるお金（累計）',
+          tabAnn: '毎年の自由資金（手取り−生活費）',
+        },
+      },
+
+      // 年齢ごとの解説メッセージ（額面モード用）
+      commentariesGross: [
+        { minAge: 22, maxAge: 25, stage: '新社会人スタート', text: '20代前半は、正規も非正規も年収の差はまだ小さいよ。' },
+        { minAge: 26, maxAge: 29, stage: '20代後半・仕事に慣れる頃', text: '少しずつ「定期昇給」と「ボーナス」の差が見え始める時期。' },
+        { minAge: 30, maxAge: 39, stage: '30代・差が広がる時期', text: '30代になると、正規雇用は昇給とボーナスでグラフがぐんぐん伸びるよ！' },
+        { minAge: 40, maxAge: 49, stage: '40代・働き盛り', text: '同じ時間働いていても、1年間の年収だけで2倍以上の差がつくことも。' },
+        { minAge: 50, maxAge: 59, stage: '50代・収入のピーク', text: '50代で年収の差は最大に。これまでの累計の差が一気に大きくなるよ。' },
+        { minAge: 60, maxAge: 64, stage: '60代・定年後の働き方', text: '60歳で定年を迎えて再雇用になっても、それまでの蓄積が大きく効いてくるよ。' },
+        { minAge: 65, maxAge: 65, stage: '65歳・ゴール！', text: '44年間で1億円以上の差に！努力だけでなく「雇用の仕組み」が大きく影響するんだ。' },
+      ],
+
+      // 年齢ごとの解説メッセージ（自由に使えるお金モード用）
+      commentariesDisposable: [
+        { minAge: 22, maxAge: 25, stage: '新社会人スタート', text: '家賃や食費などの「生活費（月14万）」はみんな共通。手元に残るお金を見てみよう！' },
+        { minAge: 26, maxAge: 29, stage: '20代後半・固定費の壁', text: '額面の差は小さくても、生活費を引くと「自由に使えるお金」にはすでに大きな差が！' },
+        { minAge: 30, maxAge: 39, stage: '30代・ゆとりの差が拡大', text: '生活費を超えたぶんは全部貯金や趣味に回せるため、30代から差が一気に広がるよ。' },
+        { minAge: 40, maxAge: 49, stage: '40代・何倍もちがう！', text: '年収は約2倍の差でも、生活費を引いた「自由に使えるお金」は約6〜7倍の差になることも！' },
+        { minAge: 50, maxAge: 59, stage: '50代・将来への備え', text: 'まとまった貯蓄ができるかどうかで、子どもの進学や老後への安心感が大きく変わるよ。' },
+        { minAge: 60, maxAge: 64, stage: '60代・定年後の暮らし', text: '収入が下がる60代でも、それまでに積み上げた貯蓄の厚みが暮らしを支えてくれるよ。' },
+        { minAge: 65, maxAge: 65, stage: '65歳・ゴール！', text: '固定費（生活費）があるため、年収の差以上に「生活のゆとり」には大きな倍率の差が生まれるんだ。' },
+      ],
+    };
+
+    /**
+     * 年齢別の年収カーブ補間ヘルパー
+     */
+    function interpolateByAnchors(age, anchors) {
+      if (age <= anchors[0][0]) return anchors[0][1];
+      const last = anchors[anchors.length - 1];
+      if (age >= last[0]) return last[1];
+      for (let i = 0; i < anchors.length - 1; i++) {
+        const [a0, v0] = anchors[i];
+        const [a1, v1] = anchors[i + 1];
+        if (age >= a0 && age <= a1) {
+          const t = (age - a0) / (a1 - a0);
+          return Math.round(v0 + (v1 - v0) * t);
+        }
+      }
+      return last[1];
+    }
+
+    /**
+     * 雇用形態ごとの収入プロファイル（将来の学歴コース・転職追加もここを拡張）
+     */
+    const EMPLOYMENT_PROFILES = {
+      regular: {
+        id: 'regular',
+        label: '正規雇用（正社員）',
+        color: '#2563EB',
+        getYearlyIncome(age) {
+          // 60歳以降は定年再雇用モデル（年収420万円）
+          if (age >= 60) {
+            return { total: 420, base: 340, bonus: 80 };
+          }
+          // 22歳(280万)→30歳(435万)→40歳(555万)→50歳(630万)→55歳(645万)→59歳(635万)
+          const total = interpolateByAnchors(age, [
+            [22, 280],
+            [25, 340],
+            [30, 435],
+            [35, 500],
+            [40, 555],
+            [45, 600],
+            [50, 630],
+            [55, 645],
+            [59, 635],
+          ]);
+          // 賞与比率：新卒期は約14%、30代以降は約22〜24%（年2回想定）
+          const bonusRatio = age <= 24 ? 0.14 + (age - 22) * 0.025 : Math.min(0.24, 0.20 + (age - 25) * 0.0015);
+          const bonus = Math.round((total * bonusRatio) / 5) * 5;
+          const base = total - bonus;
+          return { total, base, bonus };
+        },
+      },
+      nonRegular: {
+        id: 'nonRegular',
+        label: '非正規雇用（契約・アルバイト等）',
+        color: '#F59E0B',
+        getYearlyIncome(age) {
+          // 22歳(225万)から緩やかに255万前後まで推移し、60代は230万前後
+          const total = interpolateByAnchors(age, [
+            [22, 225],
+            [28, 240],
+            [35, 250],
+            [45, 255],
+            [55, 250],
+            [60, 235],
+            [65, 230],
+          ]);
+          return { total, base: total, bonus: 0 };
+        },
+      },
+    };
+
+    /**
+     * 第1段階：もしもイベントプラグイン定義
+     * 再生中に該当年齢に達するとポップアップが発生し、保障の差を体感できる
+     */
+    const EVENT_PLUGINS = [
+      {
+        id: 'injury_35',
+        age: 35,
+        icon: '🏥',
+        shortLabel: '35歳 入院',
+        title: 'ケガ・病気で2ヶ月入院！',
+        description: '急なケガや病気で2ヶ月間働けなくなってしまいました。ふたりの収入と貯金はどう変わるかな？',
+        regBadge: '🛡 有給・傷病手当でキープ',
+        regChip: '🏥 保障で収入キープ',
+        regImpactGross: 0,
+        regExtraCost: 15, // 高額療養費制度等を使った自己負担めやす
+        regText: '有給休暇や「傷病手当金」などの保障があり、休んでいる間も収入はほぼキープ！医療費（約15万円）の出費だけで済んだよ。',
+        nonRegBadge: '⚠ 働けず収入ダウン',
+        nonRegChip: '🏥 休業で減収 -40万',
+        nonRegImpactGross: -40, // 2ヶ月無給想定
+        nonRegExtraCost: 15,
+        nonRegText: '休んだ分のお給料が入らず約40万円の収入減。さらに医療費（約15万円）も重なり、貯金に大きなダメージが…。',
+        takeaway: '給料の金額だけでなく、「もしもの時に生活を守ってくれる保障（有給休暇・社会保険）」の有無が大きな差になるよ。',
+      },
+      {
+        id: 'recession_45',
+        age: 45,
+        icon: '📉',
+        shortLabel: '45歳 不景気',
+        title: '不景気で会社の業績が悪化！',
+        description: '世の中が不景気になり、会社の売上が大きく下がってしまいました。働き方によってどんな違いが出るかな？',
+        regBadge: '🛡 雇用は守られた',
+        regChip: '📉 賞与カット -30万',
+        regImpactGross: -30, // ボーナス一時減額
+        regExtraCost: 0,
+        regText: 'ボーナスは30万円減ってしまったけれど、正社員として雇用は守られ、毎月の給料は変わらず受け取れたよ。',
+        nonRegBadge: '⚠ 契約終了・仕事探し',
+        nonRegChip: '📉 契約終了 -65万',
+        nonRegImpactGross: -65, // 契約満了＋転職活動約3ヶ月無収入想定
+        nonRegExtraCost: 0,
+        nonRegText: '契約の更新がストップし、次の仕事が見つかるまで3ヶ月間収入がゼロに…。生活費の支払いで貯金が削られてしまったよ。',
+        takeaway: '景気が悪くなったとき、非正規雇用は契約終了になりやすい面があるんだ。「雇用の安定性」も進路選びの大切なポイントだよ。',
+      },
+    ];
+
+    /**
+     * 額面年収から「手取り（税金・社会保険料控除後）」を概算する関数（単位：万円）
+     * 日本の一般的な給与所得者の実効手取り率（約76%〜82%）をなだらかに再現
+     */
+    function calcTakeHome(gross) {
+      if (gross <= 0) return 0;
+      const rate = Math.max(0.75, Math.min(0.83, 0.82 - Math.max(0, gross - 200) * 0.00013));
+      return Math.round(gross * rate);
+    }
+
+    /**
+     * 22歳〜65歳までの全データを事前計算（イベントON/OFF切替時に再生成）
+     */
+    function buildTimelineDataset(eventsEnabled = false) {
+      const data = [];
+      let cumRegGross = 0;
+      let cumNonRegGross = 0;
+      let cumRegDisp = 0;
+      let cumNonRegDisp = 0;
+
+      for (let age = SIMULATION_CONFIG.startAge; age <= SIMULATION_CONFIG.endAge; age++) {
+        const reg = { ...EMPLOYMENT_PROFILES.regular.getYearlyIncome(age) };
+        const nonReg = { ...EMPLOYMENT_PROFILES.nonRegular.getYearlyIncome(age) };
+        let regExtraCost = 0;
+        let nonRegExtraCost = 0;
+        let activeEvent = null;
+
+        // もしもイベントON時、該当年齢のプラグインを適用
+        if (eventsEnabled) {
+          const plugin = EVENT_PLUGINS.find((p) => p.age === age);
+          if (plugin) {
+            activeEvent = plugin;
+            reg.total = Math.max(0, reg.total + plugin.regImpactGross);
+            reg.bonus = Math.max(0, reg.bonus + plugin.regImpactGross);
+            nonReg.total = Math.max(0, nonReg.total + plugin.nonRegImpactGross);
+            nonReg.base = nonReg.total;
+            regExtraCost = plugin.regExtraCost || 0;
+            nonRegExtraCost = plugin.nonRegExtraCost || 0;
+          }
+        }
+
+        // 手取り・自由に使えるお金（手取り − 最低限の生活費 − 臨時出費）を計算
+        const regTakeHome = calcTakeHome(reg.total);
+        const nonRegTakeHome = calcTakeHome(nonReg.total);
+        const living = SIMULATION_CONFIG.livingCostAnnual;
+
+        const regDispAnnual = regTakeHome - living - regExtraCost;
+        const nonRegDispAnnual = nonRegTakeHome - living - nonRegExtraCost;
+
+        const prevCumRegGross = cumRegGross;
+        const prevCumNonRegGross = cumNonRegGross;
+        const prevCumRegDisp = cumRegDisp;
+        const prevCumNonRegDisp = cumNonRegDisp;
+
+        cumRegGross += reg.total;
+        cumNonRegGross += nonReg.total;
+        cumRegDisp += regDispAnnual;
+        cumNonRegDisp += nonRegDispAnnual;
+
+        data.push({
+          age,
+          activeEvent,
+          regExtraCost,
+          nonRegExtraCost,
+
+          // 額面データ
+          regAnnual: reg.total,
+          regBase: reg.base,
+          regBonus: reg.bonus,
+          regCumStart: prevCumRegGross,
+          regCumEnd: cumRegGross,
+
+          nonRegAnnual: nonReg.total,
+          nonRegBase: nonReg.base,
+          nonRegBonus: nonReg.bonus,
+          nonRegCumStart: prevCumNonRegGross,
+          nonRegCumEnd: cumNonRegGross,
+
+          // 手取り＆自由に使えるお金データ
+          regTakeHome,
+          regDispAnnual,
+          regDispCumStart: prevCumRegDisp,
+          regDispCumEnd: cumRegDisp,
+
+          nonRegTakeHome,
+          nonRegDispAnnual,
+          nonRegDispCumStart: prevCumNonRegDisp,
+          nonRegDispCumEnd: cumNonRegDisp,
+        });
+      }
+      return data;
+    }
+
+    let TIMELINE_DATA = buildTimelineDataset(false);
+
+    /**
+     * 任意の小数年齢（例: 32.4歳）と現在の表示モードに対する補間値を取得
+     */
+    function getStateAtAge(floatAge, mode = 'gross') {
+      const clamped = Math.max(SIMULATION_CONFIG.startAge, Math.min(SIMULATION_CONFIG.endAge, floatAge));
+      const idx = Math.min(TIMELINE_DATA.length - 1, Math.floor(clamped) - SIMULATION_CONFIG.startAge);
+      const frac = clamped - Math.floor(clamped);
+      const row = TIMELINE_DATA[idx];
+
+      const isFinalEnd = clamped >= SIMULATION_CONFIG.endAge;
+      const progressInYear = isFinalEnd ? 1 : frac;
+      const isDisp = mode === 'disposable';
+
+      const regAnnual = isDisp ? row.regDispAnnual : row.regAnnual;
+      const nonRegAnnual = isDisp ? row.nonRegDispAnnual : row.nonRegAnnual;
+
+      const regTotal = Math.round(
+        (isDisp ? row.regDispCumStart : row.regCumStart) + regAnnual * progressInYear
+      );
+      const nonRegTotal = Math.round(
+        (isDisp ? row.nonRegDispCumStart : row.nonRegCumStart) + nonRegAnnual * progressInYear
+      );
+
+      // 正規 ÷ 非正規の倍率（0除算を防止）
+      let ratio = 1.0;
+      if (nonRegTotal > 0 && regTotal > 0) {
+        ratio = regTotal / nonRegTotal;
+      } else if (regTotal > 0 && nonRegTotal <= 0) {
+        ratio = 9.9;
+      }
+
+      return {
+        floatAge: clamped,
+        intAge: Math.floor(clamped),
+        workYear: Math.floor(clamped) - SIMULATION_CONFIG.startAge + 1,
+        activeEvent: row.activeEvent,
+        regExtraCost: row.regExtraCost,
+        nonRegExtraCost: row.nonRegExtraCost,
+
+        regAnnual,
+        regBase: row.regBase,
+        regBonus: row.regBonus,
+        regTakeHome: row.regTakeHome,
+        regTotal,
+
+        nonRegAnnual,
+        nonRegBase: row.nonRegBase,
+        nonRegBonus: row.nonRegBonus,
+        nonRegTakeHome: row.nonRegTakeHome,
+        nonRegTotal,
+
+        diffTotal: regTotal - nonRegTotal,
+        ratio,
+      };
+    }
+
+    /**
+     * 金額フォーマット（例: 12345 -> "1億2,345万円" / -40 -> "−40万円"）
+     */
+    function formatYen(manYen, showPlus = false) {
+      const sign = manYen < 0 ? '−' : (showPlus && manYen > 0 ? '+' : '');
+      const abs = Math.abs(Math.round(manYen));
+      const oku = Math.floor(abs / 10000);
+      const man = abs % 10000;
+      if (oku > 0) {
+        return `${sign}${oku}億${man.toLocaleString('ja-JP')}万円`;
+      }
+      return `${sign}${man.toLocaleString('ja-JP')}万円`;
+    }
+
+    /**
+     * 差額を中学生に身近な「モノ」に換算して返す
+     */
+    function getDiffEquivalentText(diffMan) {
+      if (diffMan < 50) return 'ほぼ同じスタート';
+      if (diffMan < 300) return `スマホ約${Math.floor(diffMan / 15)}台分`;
+      if (diffMan < 1500) return `新車 約${(diffMan / 300).toFixed(1)}台分`;
+      if (diffMan < 3500) return `新車 約${Math.floor(diffMan / 300)}台分`;
+      const houses = (diffMan / 3500).toFixed(1);
+      return `マイホーム約${houses}軒分`;
+    }
+
+    /**
+     * =========================================================================
+     * 2. サウンドエンジン (Tone.js)
+     *    外部音声ファイルなしで、心地よいクリック音・ボーナス音を合成
+     * =========================================================================
+     */
+    const SoundEngine = {
+      enabled: true,
+      initialized: false,
+      synth: null,
+      chimeSynth: null,
+
+      async init() {
+        if (this.initialized || !this.enabled) return;
+        try {
+          if (typeof Tone === 'undefined') return;
+          await Tone.start();
+          this.synth = new Tone.Synth({
+            oscillator: { type: 'triangle' },
+            envelope: { attack: 0.005, decay: 0.08, sustain: 0, release: 0.05 },
+            volume: -18,
+          }).toDestination();
+          this.chimeSynth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: 'sine' },
+            envelope: { attack: 0.01, decay: 0.25, sustain: 0.1, release: 0.4 },
+            volume: -14,
+          }).toDestination();
+          this.initialized = true;
+        } catch (err) {
+          console.warn('Audio init skipped:', err);
+        }
+      },
+
+      playYearTick(age) {
+        if (!this.enabled || !this.initialized || !this.synth) return;
+        try {
+          // 年齢が上がると少しずつ音程が上がる演出
+          const notes = ['C5', 'D5', 'E5', 'G5', 'A5'];
+          const note = notes[(age - 22) % notes.length];
+          this.synth.triggerAttackRelease(note, '32n');
+        } catch (e) {}
+      },
+
+      playGoalFanfare() {
+        if (!this.enabled || !this.initialized || !this.chimeSynth) return;
+        try {
+          const now = Tone.now();
+          this.chimeSynth.triggerAttackRelease(['C5', 'E5', 'G5'], '8n', now);
+          this.chimeSynth.triggerAttackRelease(['C5', 'E5', 'G5', 'C6'], '4n', now + 0.18);
+        } catch (e) {}
+      },
+
+      playSwitchClick() {
+        if (!this.enabled || !this.initialized || !this.synth) return;
+        try {
+          this.synth.triggerAttackRelease('E5', '64n');
+        } catch (e) {}
+      },
+
+      playEventAlert() {
+        if (!this.enabled || !this.initialized || !this.chimeSynth) return;
+        try {
+          const now = Tone.now();
+          this.chimeSynth.triggerAttackRelease(['A4', 'C5'], '16n', now);
+          this.chimeSynth.triggerAttackRelease(['F4', 'A4'], '8n', now + 0.12);
+        } catch (e) {}
+      },
+    };
+
+    /**
+     * =========================================================================
+     * 3. ズーム＆ピンチ操作管理 (ZoomManager)
+     *    iPadでの2本指ピンチ拡大縮小・ヘッダーの＋/−ボタンに対応
+     * =========================================================================
+     */
+    const ZoomManager = {
+      scale: 1.0,
+      minScale: 0.65,
+      maxScale: 2.2,
+      step: 0.15,
+      isPinching: false,
+      pinchStartDist: 0,
+      pinchStartScale: 1.0,
+      resizeTimer: null,
+
+      init() {
+        this.viewport = document.getElementById('zoom-viewport');
+        this.sizer = document.getElementById('zoom-sizer');
+        this.stage = document.getElementById('zoom-stage');
+        this.btnIn = document.getElementById('btn-zoom-in');
+        this.btnOut = document.getElementById('btn-zoom-out');
+        this.btnReset = document.getElementById('btn-zoom-reset');
+
+        this.btnIn.addEventListener('click', () => this.setScale(this.scale + this.step));
+        this.btnOut.addEventListener('click', () => this.setScale(this.scale - this.step));
+        this.btnReset.addEventListener('click', () => this.setScale(1.0));
+
+        // 2本指ピンチズーム（iPad・タブレット対応）
+        this.viewport.addEventListener(
+          'touchstart',
+          (e) => {
+            if (e.touches.length === 2) {
+              this.isPinching = true;
+              this.pinchStartDist = this.getTouchDistance(e.touches);
+              this.pinchStartScale = this.scale;
+              this.stage.classList.add('pinching');
+            }
+          },
+          { passive: true }
+        );
+
+        this.viewport.addEventListener(
+          'touchmove',
+          (e) => {
+            if (this.isPinching && e.touches.length === 2) {
+              e.preventDefault();
+              const dist = this.getTouchDistance(e.touches);
+              if (this.pinchStartDist > 0) {
+                const nextScale = this.pinchStartScale * (dist / this.pinchStartDist);
+                this.setScale(nextScale, true);
+              }
+            }
+          },
+          { passive: false }
+        );
+
+        const endPinch = () => {
+          if (!this.isPinching) return;
+          this.isPinching = false;
+          this.stage.classList.remove('pinching');
+          ChartRenderer.resizeAndDraw();
+        };
+        this.viewport.addEventListener('touchend', endPinch, { passive: true });
+        this.viewport.addEventListener('touchcancel', endPinch, { passive: true });
+
+        // PC/トラックパッドでの Ctrl+ホイールズームにも対応
+        this.viewport.addEventListener(
+          'wheel',
+          (e) => {
+            if (e.ctrlKey || e.metaKey) {
+              e.preventDefault();
+              const delta = e.deltaY < 0 ? 0.1 : -0.1;
+              this.setScale(this.scale + delta);
+            }
+          },
+          { passive: false }
+        );
+
+        // 画面リサイズ・iPadの縦横回転時に再レイアウト
+        window.addEventListener('resize', () => {
+          this.applyTransform(false);
+          clearTimeout(this.resizeTimer);
+          this.resizeTimer = setTimeout(() => ChartRenderer.resizeAndDraw(), 120);
+        });
+
+        this.applyTransform(false);
+      },
+
+      getTouchDistance(touches) {
+        const dx = touches[0].clientX - touches[1].clientX;
+        const dy = touches[0].clientY - touches[1].clientY;
+        return Math.hypot(dx, dy);
+      },
+
+      setScale(nextScale, fromPinch = false) {
+        const clamped = Math.max(this.minScale, Math.min(this.maxScale, Math.round(nextScale * 100) / 100));
+        this.scale = clamped;
+        this.applyTransform(fromPinch);
+      },
+
+      applyTransform(fromPinch = false) {
+        if (!this.viewport || !this.sizer || !this.stage) return;
+
+        this.btnReset.textContent = `${Math.round(this.scale * 100)}%`;
+
+        if (Math.abs(this.scale - 1.0) < 0.01) {
+          this.scale = 1.0;
+          this.stage.style.transform = 'scale(1)';
+          this.stage.style.width = '';
+          this.stage.style.minHeight = '';
+          this.sizer.style.width = '100%';
+          this.sizer.style.height = '100%';
+        } else {
+          const vw = this.viewport.clientWidth;
+          const vh = this.viewport.clientHeight;
+          const baseW = Math.min(vw, 1360);
+          this.stage.style.width = `${baseW}px`;
+          this.stage.style.minHeight = `${vh}px`;
+          this.stage.style.transform = `scale(${this.scale})`;
+
+          const naturalH = Math.max(vh, this.stage.offsetHeight);
+          this.sizer.style.width = `${Math.max(vw, Math.ceil(baseW * this.scale))}px`;
+          this.sizer.style.height = `${Math.max(vh, Math.ceil(naturalH * this.scale))}px`;
+        }
+
+        if (!fromPinch) {
+          clearTimeout(this.resizeTimer);
+          this.resizeTimer = setTimeout(() => ChartRenderer.resizeAndDraw(), 150);
+        }
+      },
+    };
+
+    /**
+     * =========================================================================
+     * 4. リアルタイムグラフ描画 (ChartRenderer)
+     *    Canvasを使用し、累計収入・毎年の年収カーブを高精細に描画
+     * =========================================================================
+     */
+    const ChartRenderer = {
+      mode: 'cumulative', // 'cumulative' | 'annual'
+      canvas: null,
+      ctx: null,
+      currentFloatAge: SIMULATION_CONFIG.startAge,
+
+      init() {
+        this.canvas = document.getElementById('income-chart');
+        this.ctx = this.canvas.getContext('2d');
+
+        const tabCum = document.getElementById('tab-cumulative');
+        const tabAnn = document.getElementById('tab-annual');
+
+        tabCum.addEventListener('click', () => {
+          this.mode = 'cumulative';
+          tabCum.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-white text-slate-900 shadow-sm transition';
+          tabAnn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold text-slate-500 hover:text-slate-800 transition';
+          this.draw(this.currentFloatAge);
+        });
+
+        tabAnn.addEventListener('click', () => {
+          this.mode = 'annual';
+          tabAnn.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-white text-slate-900 shadow-sm transition';
+          tabCum.className = 'px-2.5 py-1 rounded-lg text-xs font-bold text-slate-500 hover:text-slate-800 transition';
+          this.draw(this.currentFloatAge);
+        });
+
+        // コンテナサイズ変化を監視して常に高精細に再描画
+        const container = document.getElementById('chart-container');
+        if (typeof ResizeObserver !== 'undefined' && container) {
+          const ro = new ResizeObserver(() => this.resizeAndDraw());
+          ro.observe(container);
+        }
+
+        this.resizeAndDraw();
+      },
+
+      resizeAndDraw() {
+        if (!this.canvas) return;
+        const container = document.getElementById('chart-container');
+        // ズーム拡大時も文字や線がボケないようにDPRにズーム倍率を掛ける
+        const dpr = Math.min(3, (window.devicePixelRatio || 1) * Math.max(1, ZoomManager.scale));
+        const w = Math.max(260, container.clientWidth);
+        const h = Math.max(120, container.clientHeight);
+
+        this.canvas.width = Math.floor(w * dpr);
+        this.canvas.height = Math.floor(h * dpr);
+        this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        this.width = w;
+        this.height = h;
+        this.draw(this.currentFloatAge);
+      },
+
+      draw(floatAge) {
+        this.currentFloatAge = floatAge;
+        if (!this.ctx || !this.width || !this.height) return;
+
+        const ctx = this.ctx;
+        const w = this.width;
+        const h = this.height;
+        const pad = { top: 18, right: 20, bottom: 26, left: 56 };
+        const plotW = w - pad.left - pad.right;
+        const plotH = h - pad.top - pad.bottom;
+
+        ctx.clearRect(0, 0, w, h);
+
+        const isCum = this.mode === 'cumulative';
+        const viewMode = SimulationApp.viewMode;
+        const modeCfg = SIMULATION_CONFIG.modes[viewMode];
+        const maxY = isCum ? modeCfg.maxScaleTotal : modeCfg.maxScaleAnnual;
+        const minY = isCum ? 0 : modeCfg.minScaleAnnual;
+        const minAge = SIMULATION_CONFIG.startAge;
+        const maxAge = SIMULATION_CONFIG.endAge;
+
+        const xOf = (age) => pad.left + ((age - minAge) / (maxAge - minAge)) * plotW;
+        const yOf = (val) => pad.top + plotH - ((val - minY) / (maxY - minY)) * plotH;
+
+        // 1. 背景グリッドとY軸ラベル
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.lineWidth = 1;
+        ctx.font = '600 11px "Inter", "Noto Sans JP", sans-serif';
+        ctx.fillStyle = '#64748b';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+
+        let yTicks;
+        if (isCum) {
+          yTicks = viewMode === 'gross'
+            ? [0, 5000, 10000, 15000, 20000]
+            : [0, 2500, 5000, 7500, 10000];
+        } else {
+          yTicks = viewMode === 'gross'
+            ? [0, 200, 400, 600]
+            : [-50, 0, 100, 200, 300];
+        }
+
+        for (const val of yTicks) {
+          const y = yOf(val);
+          ctx.beginPath();
+          ctx.strokeStyle = val === 0 ? '#94a3b8' : '#e2e8f0';
+          ctx.lineWidth = val === 0 && minY < 0 ? 1.5 : 1;
+          ctx.moveTo(pad.left, y);
+          ctx.lineTo(w - pad.right, y);
+          ctx.stroke();
+
+          let label = '';
+          if (val === 0) label = '0';
+          else if (isCum) label = val >= 10000 ? `${val / 10000}億` : `${val}万`;
+          else label = `${val}万`;
+          ctx.fillStyle = val < 0 ? '#e11d48' : '#64748b';
+          ctx.fillText(label, pad.left - 8, y);
+        }
+
+        // 2. X軸ラベル（22歳, 30歳, 40歳, 50歳, 60歳, 65歳）
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        const xTicks = [22, 30, 40, 50, 60, 65];
+        for (const age of xTicks) {
+          const x = xOf(age);
+          ctx.strokeStyle = '#f1f5f9';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(x, pad.top);
+          ctx.lineTo(x, pad.top + plotH);
+          ctx.stroke();
+          ctx.fillStyle = '#64748b';
+          ctx.fillText(`${age}歳`, x, pad.top + plotH + 7);
+        }
+
+        // 2.5 もしもイベントON時：イベント発生年齢に⚡マーカーの縦線を描画
+        if (SimulationApp.eventsEnabled) {
+          for (const ev of EVENT_PLUGINS) {
+            const ex = xOf(ev.age);
+            ctx.save();
+            ctx.setLineDash([3, 3]);
+            ctx.strokeStyle = 'rgba(225, 29, 72, 0.45)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(ex, pad.top);
+            ctx.lineTo(ex, pad.top + plotH);
+            ctx.stroke();
+            ctx.restore();
+
+            // 上部に小さなイベントバッジ
+            ctx.font = '700 10px "Noto Sans JP", sans-serif';
+            ctx.fillStyle = '#e11d48';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(`⚡${ev.age}歳`, ex, pad.top - 2);
+          }
+        }
+
+        // 3. 現在年齢までの実線データポイントを構築
+        const pointsReg = [];
+        const pointsNon = [];
+
+        const currentState = getStateAtAge(floatAge, viewMode);
+        const startRow = TIMELINE_DATA[0];
+        const isDisp = viewMode === 'disposable';
+
+        // 22歳始点
+        pointsReg.push({ x: xOf(minAge), y: yOf(isCum ? 0 : (isDisp ? startRow.regDispAnnual : startRow.regAnnual)) });
+        pointsNon.push({ x: xOf(minAge), y: yOf(isCum ? 0 : (isDisp ? startRow.nonRegDispAnnual : startRow.nonRegAnnual)) });
+
+        // 通過済みの整数年齢ポイント
+        for (let i = 0; i < TIMELINE_DATA.length; i++) {
+          const row = TIMELINE_DATA[i];
+          if (row.age > minAge && row.age <= Math.floor(floatAge)) {
+            const rVal = isCum
+              ? (isDisp ? row.regDispCumStart : row.regCumStart)
+              : (isDisp ? row.regDispAnnual : row.regAnnual);
+            const nVal = isCum
+              ? (isDisp ? row.nonRegDispCumStart : row.nonRegCumStart)
+              : (isDisp ? row.nonRegDispAnnual : row.nonRegAnnual);
+            pointsReg.push({ x: xOf(row.age), y: yOf(rVal) });
+            pointsNon.push({ x: xOf(row.age), y: yOf(nVal) });
+          }
+        }
+
+        // 現在の小数年齢ポイント（先端）
+        const tipX = xOf(floatAge);
+        const tipRegY = yOf(isCum ? currentState.regTotal : currentState.regAnnual);
+        const tipNonY = yOf(isCum ? currentState.nonRegTotal : currentState.nonRegAnnual);
+
+        if (floatAge > minAge) {
+          pointsReg.push({ x: tipX, y: tipRegY });
+          pointsNon.push({ x: tipX, y: tipNonY });
+        }
+
+        // 4. 差額エリアの塗りつぶし（2本のラインの間を淡い青でシェーディング）
+        if (pointsReg.length >= 2) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(pointsReg[0].x, pointsReg[0].y);
+          for (let i = 1; i < pointsReg.length; i++) ctx.lineTo(pointsReg[i].x, pointsReg[i].y);
+          for (let i = pointsNon.length - 1; i >= 0; i--) ctx.lineTo(pointsNon[i].x, pointsNon[i].y);
+          ctx.closePath();
+          const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + plotH);
+          grad.addColorStop(0, 'rgba(37, 99, 235, 0.22)');
+          grad.addColorStop(1, 'rgba(37, 99, 235, 0.04)');
+          ctx.fillStyle = grad;
+          ctx.fill();
+          ctx.restore();
+        }
+
+        // 5. 非正規ライン（オレンジ）
+        ctx.beginPath();
+        ctx.strokeStyle = EMPLOYMENT_PROFILES.nonRegular.color;
+        ctx.lineWidth = 3;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        pointsNon.forEach((p, idx) => (idx === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+        ctx.stroke();
+
+        // 6. 正規ライン（ブルー）
+        ctx.beginPath();
+        ctx.strokeStyle = EMPLOYMENT_PROFILES.regular.color;
+        ctx.lineWidth = 3.5;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        pointsReg.forEach((p, idx) => (idx === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+        ctx.stroke();
+
+        // 7. 現在位置の垂直カーソルとドット
+        ctx.save();
+        ctx.setLineDash([4, 3]);
+        ctx.strokeStyle = 'rgba(15, 23, 42, 0.25)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(tipX, pad.top);
+        ctx.lineTo(tipX, pad.top + plotH);
+        ctx.stroke();
+        ctx.restore();
+
+        // 先端ドット（正規）
+        ctx.beginPath();
+        ctx.arc(tipX, tipRegY, 5.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = EMPLOYMENT_PROFILES.regular.color;
+        ctx.stroke();
+
+        // 先端ドット（非正規）
+        ctx.beginPath();
+        ctx.arc(tipX, tipNonY, 5.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = EMPLOYMENT_PROFILES.nonRegular.color;
+        ctx.stroke();
+
+        // 8. 差額が十分広がったら、2本の線の間に「差」矢印ラベルを表示
+        if (Math.abs(tipNonY - tipRegY) > 26 && floatAge >= 26) {
+          const midY = (tipRegY + tipNonY) / 2;
+          const diffVal = isCum
+            ? formatYen(currentState.diffTotal)
+            : `年+${currentState.regAnnual - currentState.nonRegAnnual}万`;
+          const labelX = tipX > w - 145 ? tipX - 10 : tipX + 10;
+          const align = tipX > w - 145 ? 'right' : 'left';
+
+          ctx.font = '800 11px "Inter", "Noto Sans JP", sans-serif';
+          const textW = ctx.measureText(`差 ${diffVal}`).width + 14;
+          const boxX = align === 'right' ? labelX - textW : labelX;
+
+          // ピル背景
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+          this.roundRect(ctx, boxX, midY - 11, textW, 22, 6);
+          ctx.fill();
+
+          ctx.fillStyle = '#6EE7B7';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`差 ${diffVal}`, boxX + textW / 2, midY + 0.5);
+        }
+
+        // 9. 凡例（左上）
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.font = '700 11px "Noto Sans JP", sans-serif';
+
+        ctx.fillStyle = EMPLOYMENT_PROFILES.regular.color;
+        ctx.fillRect(pad.left + 8, pad.top + 3, 12, 4);
+        ctx.fillStyle = '#1e293b';
+        ctx.fillText('正規雇用', pad.left + 24, pad.top + 5);
+
+        ctx.fillStyle = EMPLOYMENT_PROFILES.nonRegular.color;
+        ctx.fillRect(pad.left + 80, pad.top + 3, 12, 4);
+        ctx.fillStyle = '#1e293b';
+        ctx.fillText('非正規雇用', pad.left + 96, pad.top + 5);
+      },
+
+      roundRect(ctx, x, y, width, height, radius) {
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.lineTo(x + width - radius, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+        ctx.lineTo(x + width, y + height - radius);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+        ctx.lineTo(x + radius, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.closePath();
+      },
+    };
+
+    /**
+     * =========================================================================
+     * 5. メインアプリケーション制御 (SimulationApp)
+     * =========================================================================
+     */
+    const SimulationApp = {
+      floatAge: SIMULATION_CONFIG.startAge,
+      lastIntAge: SIMULATION_CONFIG.startAge,
+      isPlaying: false,
+      speed: 1.0, // 1.0 = 約2.2歳/秒（22歳〜65歳が約20秒で完結し授業にちょうど良い）
+      yearsPerSecondBase: 2.2,
+      lastFrameTime: 0,
+      achievedRegMilestones: new Set(),
+      achievedNonRegMilestones: new Set(),
+
+      // 第1段階追加状態：表示モード & もしもイベント
+      viewMode: 'gross', // 'gross' | 'disposable'
+      eventsEnabled: false,
+      triggeredEvents: new Set(),
+      pendingResumeAfterEvent: false,
+
+      init() {
+        // DOM要素のキャッシュ
+        this.els = {
+          displayAge: document.getElementById('display-age'),
+          stageBadge: document.getElementById('display-stage-badge'),
+          workYearsLabel: document.getElementById('work-years-label'),
+          slider: document.getElementById('age-slider'),
+          diffTitleLabel: document.getElementById('diff-title-label'),
+          diffTotal: document.getElementById('display-diff-total'),
+          ratioBadge: document.getElementById('display-ratio-badge'),
+          diffEquiv: document.getElementById('display-diff-equiv'),
+          commentaryText: document.getElementById('commentary-text'),
+
+          // ワンタップ・モード切替UI
+          btnModeGross: document.getElementById('btn-mode-gross'),
+          btnModeDisposable: document.getElementById('btn-mode-disposable'),
+          modeHintText: document.getElementById('mode-hint-text'),
+          btnToggleEvents: document.getElementById('btn-toggle-events'),
+          eventSwitchPill: document.getElementById('event-switch-pill'),
+          eventSwitchKnob: document.getElementById('event-switch-knob'),
+          eventSwitchLabel: document.getElementById('event-switch-label'),
+          jumpEv35: document.getElementById('jump-ev-35'),
+          jumpEv45: document.getElementById('jump-ev-45'),
+
+          // 正規カード
+          cardRegular: document.getElementById('card-regular'),
+          regAnnualLabel: document.getElementById('reg-annual-label'),
+          regAnnual: document.getElementById('reg-annual'),
+          regTotalLabel: document.getElementById('reg-total-label'),
+          regTotal: document.getElementById('reg-total'),
+          regBreakdown: document.getElementById('reg-breakdown'),
+          regBarH: document.getElementById('reg-bar-h'),
+          regTower: document.getElementById('reg-tower'),
+          regTickMid: document.getElementById('reg-tick-mid'),
+          regTickTop: document.getElementById('reg-tick-top'),
+          regMsLabel: document.getElementById('reg-ms-label'),
+          regMilestones: document.getElementById('reg-milestones'),
+          regFxLayer: document.getElementById('reg-fx-layer'),
+          regEventChip: document.getElementById('reg-event-chip'),
+
+          // 非正規カード
+          cardNonReg: document.getElementById('card-nonreg'),
+          nonRegAnnualLabel: document.getElementById('nonreg-annual-label'),
+          nonRegAnnual: document.getElementById('nonreg-annual'),
+          nonRegTotalLabel: document.getElementById('nonreg-total-label'),
+          nonRegTotal: document.getElementById('nonreg-total'),
+          nonRegBreakdown: document.getElementById('nonreg-breakdown'),
+          nonRegBarH: document.getElementById('nonreg-bar-h'),
+          nonRegTower: document.getElementById('nonreg-tower'),
+          nonRegTickMid: document.getElementById('nonreg-tick-mid'),
+          nonRegTickTop: document.getElementById('nonreg-tick-top'),
+          nonRegMsLabel: document.getElementById('nonreg-ms-label'),
+          nonRegMilestones: document.getElementById('nonreg-milestones'),
+          nonRegFxLayer: document.getElementById('nonreg-fx-layer'),
+          nonRegEventChip: document.getElementById('nonreg-event-chip'),
+
+          // グラフタブ
+          tabCum: document.getElementById('tab-cumulative'),
+          tabAnn: document.getElementById('tab-annual'),
+
+          btnPlay: document.getElementById('btn-play'),
+          playIcon: document.getElementById('play-icon'),
+          playText: document.getElementById('play-text'),
+          btnReset: document.getElementById('btn-reset'),
+          btnStepBack: document.getElementById('btn-step-back'),
+          btnStepFwd: document.getElementById('btn-step-fwd'),
+
+          btnSound: document.getElementById('btn-sound'),
+          soundIcon: document.getElementById('sound-icon'),
+          soundLabel: document.getElementById('sound-label'),
+
+          btnInfo: document.getElementById('btn-info'),
+          infoModal: document.getElementById('info-modal'),
+          btnCloseModal: document.getElementById('btn-close-modal'),
+          btnOkModal: document.getElementById('btn-ok-modal'),
+
+          // もしもイベントモーダル
+          eventModal: document.getElementById('event-modal'),
+          evModalIcon: document.getElementById('ev-modal-icon'),
+          evModalAge: document.getElementById('ev-modal-age'),
+          evModalTitle: document.getElementById('ev-modal-title'),
+          evModalDesc: document.getElementById('ev-modal-desc'),
+          evModalRegBadge: document.getElementById('ev-modal-reg-badge'),
+          evModalRegImpact: document.getElementById('ev-modal-reg-impact'),
+          evModalRegText: document.getElementById('ev-modal-reg-text'),
+          evModalNonRegBadge: document.getElementById('ev-modal-nonreg-badge'),
+          evModalNonRegImpact: document.getElementById('ev-modal-nonreg-impact'),
+          evModalNonRegText: document.getElementById('ev-modal-nonreg-text'),
+          evModalTakeaway: document.getElementById('ev-modal-takeaway'),
+          btnCloseEventX: document.getElementById('btn-close-event-x'),
+          btnEventStay: document.getElementById('btn-event-stay'),
+          btnEventContinue: document.getElementById('btn-event-continue'),
+        };
+
+        this.renderMilestoneShells();
+        this.bindEvents();
+        ZoomManager.init();
+        ChartRenderer.init();
+        this.applyModeChrome();
+        this.updateUI(false);
+      },
+
+      /**
+       * 現在のモードに応じたマイルストーンのアイコン枠を生成
+       */
+      renderMilestoneShells() {
+        const milestones = SIMULATION_CONFIG.modes[this.viewMode].milestones;
+        const buildHTML = (prefix) =>
+          milestones
+            .map(
+              (m, i) => `
+              <div id="${prefix}-ms-${i}" class="px-2 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-bold flex items-center gap-1 border border-slate-200 bg-slate-50 text-slate-400 opacity-45 transition-all duration-300" title="${formatYen(m.amount)}で達成">
+                <span>${m.icon}</span>
+                <span class="hidden sm:inline">${m.label}</span>
+              </div>`
+            )
+            .join('');
+
+        this.els.regMilestones.innerHTML = buildHTML('reg');
+        this.els.nonRegMilestones.innerHTML = buildHTML('nonreg');
+      },
+
+      /**
+       * ワンタップ表示モード切替（額面 ⇔ 自由に使えるお金）
+       */
+      async setViewMode(mode) {
+        if (this.viewMode === mode) return;
+        await SoundEngine.init();
+        SoundEngine.playSwitchClick();
+        this.viewMode = mode;
+        this.achievedRegMilestones.clear();
+        this.achievedNonRegMilestones.clear();
+        this.renderMilestoneShells();
+        this.applyModeChrome();
+        this.updateUI(false);
+      },
+
+      /**
+       * モード切替に伴うラベル・ボタン見た目・タワー目盛りの一括反映
+       */
+      applyModeChrome() {
+        const isGross = this.viewMode === 'gross';
+        const cfg = SIMULATION_CONFIG.modes[this.viewMode];
+
+        // ワンタップセグメントボタンのアクティブ切替
+        if (isGross) {
+          this.els.btnModeGross.className = 'px-2.5 sm:px-3 py-1 rounded-lg text-xs font-extrabold bg-white text-slate-900 shadow-sm flex items-center gap-1 transition active:scale-95';
+          this.els.btnModeDisposable.className = 'px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 transition active:scale-95';
+        } else {
+          this.els.btnModeGross.className = 'px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 transition active:scale-95';
+          this.els.btnModeDisposable.className = 'px-2.5 sm:px-3 py-1 rounded-lg text-xs font-extrabold bg-emerald-600 text-white shadow-sm flex items-center gap-1 transition active:scale-95';
+        }
+
+        // 各種ラベル更新
+        this.els.modeHintText.textContent = cfg.hint;
+        this.els.diffTitleLabel.textContent = cfg.diffTitle;
+        this.els.regAnnualLabel.textContent = cfg.annualLabel;
+        this.els.nonRegAnnualLabel.textContent = cfg.annualLabel;
+        this.els.regTotalLabel.textContent = cfg.totalLabel;
+        this.els.nonRegTotalLabel.textContent = cfg.totalLabel;
+        this.els.regMsLabel.textContent = cfg.msLabel;
+        this.els.nonRegMsLabel.textContent = cfg.msLabel;
+        this.els.tabCum.textContent = cfg.tabCum;
+        this.els.tabAnn.textContent = cfg.tabAnn;
+
+        // タワーの目盛り線位置とラベルを更新
+        const midPct = (cfg.towerTicks.midVal / cfg.maxScaleTotal) * 100;
+        const topPct = (cfg.towerTicks.topVal / cfg.maxScaleTotal) * 100;
+        [this.els.regTickMid, this.els.nonRegTickMid].forEach((el) => {
+          el.style.bottom = `${midPct.toFixed(1)}%`;
+          el.textContent = cfg.towerTicks.midLabel;
+        });
+        [this.els.regTickTop, this.els.nonRegTickTop].forEach((el) => {
+          el.style.bottom = `${topPct.toFixed(1)}%`;
+          el.textContent = cfg.towerTicks.topLabel;
+        });
+      },
+
+      /**
+       * もしもイベントON/OFFのワンタップ切替
+       */
+      async toggleEvents() {
+        await SoundEngine.init();
+        SoundEngine.playSwitchClick();
+        this.eventsEnabled = !this.eventsEnabled;
+        TIMELINE_DATA = buildTimelineDataset(this.eventsEnabled);
+        this.triggeredEvents.clear();
+
+        // すでに通り過ぎたイベントは重複ポップアップしないよう登録（現在年齢より未来のものは発動）
+        if (this.eventsEnabled) {
+          for (const ev of EVENT_PLUGINS) {
+            if (ev.age < Math.floor(this.floatAge)) {
+              this.triggeredEvents.add(ev.id);
+            }
+          }
+        }
+
+        // トグルスイッチの見た目更新
+        if (this.eventsEnabled) {
+          this.els.btnToggleEvents.setAttribute('aria-pressed', 'true');
+          this.els.btnToggleEvents.className = 'px-3 py-1 rounded-xl border border-rose-300 bg-rose-50 hover:bg-rose-100 active:scale-95 flex items-center gap-2 text-xs font-bold text-rose-900 transition shadow-sm';
+          this.els.eventSwitchPill.className = 'w-9 h-5 rounded-full bg-rose-500 relative transition-colors duration-200 inline-flex items-center px-0.5';
+          this.els.eventSwitchKnob.className = 'w-4 h-4 rounded-full bg-white shadow-sm transform translate-x-4 transition-transform duration-200';
+          this.els.eventSwitchLabel.textContent = 'ON';
+          this.els.eventSwitchLabel.className = 'text-[11px] font-extrabold text-rose-600 min-w-[24px] text-left';
+          this.els.jumpEv35.classList.remove('hidden');
+          this.els.jumpEv45.classList.remove('hidden');
+        } else {
+          this.els.btnToggleEvents.setAttribute('aria-pressed', 'false');
+          this.els.btnToggleEvents.className = 'px-3 py-1 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 active:scale-95 flex items-center gap-2 text-xs font-bold text-slate-700 transition shadow-sm';
+          this.els.eventSwitchPill.className = 'w-9 h-5 rounded-full bg-slate-300 relative transition-colors duration-200 inline-flex items-center px-0.5';
+          this.els.eventSwitchKnob.className = 'w-4 h-4 rounded-full bg-white shadow-sm transform translate-x-0 transition-transform duration-200';
+          this.els.eventSwitchLabel.textContent = 'OFF';
+          this.els.eventSwitchLabel.className = 'text-[11px] font-extrabold text-slate-500 min-w-[24px] text-left';
+          this.els.jumpEv35.classList.add('hidden');
+          this.els.jumpEv45.classList.add('hidden');
+        }
+
+        this.updateUI(false);
+      },
+
+      /**
+       * もしもイベント発生モーダルを表示
+       */
+      showEventModal(plugin, shouldResume) {
+        this.pendingResumeAfterEvent = shouldResume;
+        SoundEngine.playEventAlert();
+
+        this.els.evModalIcon.textContent = plugin.icon;
+        this.els.evModalAge.textContent = `⚡ ${plugin.age}歳 もしもイベント発生！`;
+        this.els.evModalTitle.textContent = plugin.title;
+        this.els.evModalDesc.textContent = plugin.description;
+
+        // 正規雇用側の表示
+        this.els.evModalRegBadge.textContent = plugin.regBadge;
+        const regExtraTxt = plugin.regExtraCost > 0 ? ` ＋ 医療費 −${plugin.regExtraCost}万円` : '';
+        this.els.evModalRegImpact.textContent =
+          plugin.regImpactGross === 0
+            ? `収入変化 0万円${regExtraTxt}`
+            : `収入 ${formatYen(plugin.regImpactGross)}${regExtraTxt}`;
+        this.els.evModalRegText.textContent = plugin.regText;
+
+        // 非正規雇用側の表示
+        this.els.evModalNonRegBadge.textContent = plugin.nonRegBadge;
+        const nonRegExtraTxt = plugin.nonRegExtraCost > 0 ? ` ＋ 医療費 −${plugin.nonRegExtraCost}万円` : '';
+        this.els.evModalNonRegImpact.textContent = `収入 ${formatYen(plugin.nonRegImpactGross)}${nonRegExtraTxt}`;
+        this.els.evModalNonRegText.textContent = plugin.nonRegText;
+
+        this.els.evModalTakeaway.textContent = plugin.takeaway;
+
+        // カードに揺れ演出を付与
+        this.els.cardNonReg.classList.remove('animate-shake');
+        void this.els.cardNonReg.offsetWidth;
+        this.els.cardNonReg.classList.add('animate-shake');
+
+        this.els.eventModal.classList.remove('hidden');
+        this.els.eventModal.classList.add('flex');
+      },
+
+      closeEventModal(resumePlay = false) {
+        this.els.eventModal.classList.add('hidden');
+        this.els.eventModal.classList.remove('flex');
+        if (resumePlay) {
+          this.play();
+        }
+      },
+
+      /**
+       * 各種ボタン・スライダーのイベント設定
+       */
+      bindEvents() {
+        // ワンタップ・モード切替
+        this.els.btnModeGross.addEventListener('click', () => this.setViewMode('gross'));
+        this.els.btnModeDisposable.addEventListener('click', () => this.setViewMode('disposable'));
+        this.els.btnToggleEvents.addEventListener('click', () => this.toggleEvents());
+
+        // もしもイベントモーダルボタン
+        this.els.btnEventContinue.addEventListener('click', () => this.closeEventModal(true));
+        this.els.btnEventStay.addEventListener('click', () => this.closeEventModal(false));
+        this.els.btnCloseEventX.addEventListener('click', () => this.closeEventModal(false));
+        this.els.eventModal.addEventListener('click', (e) => {
+          if (e.target === this.els.eventModal) this.closeEventModal(false);
+        });
+
+        // 再生・一時停止
+        this.els.btnPlay.addEventListener('click', async () => {
+          await SoundEngine.init();
+          if (this.isPlaying) {
+            this.pause();
+          } else {
+            if (this.floatAge >= SIMULATION_CONFIG.endAge) {
+              this.reset(false);
+            }
+            this.play();
+          }
+        });
+
+        // リセット
+        this.els.btnReset.addEventListener('click', () => {
+          this.reset(true);
+        });
+
+        // 1歳ずつコマ送り
+        this.els.btnStepBack.addEventListener('click', () => {
+          this.pause();
+          const target = Math.max(SIMULATION_CONFIG.startAge, Math.floor(this.floatAge) - 1);
+          this.jumpToAge(target);
+        });
+
+        this.els.btnStepFwd.addEventListener('click', async () => {
+          await SoundEngine.init();
+          this.pause();
+          const target = Math.min(SIMULATION_CONFIG.endAge, Math.floor(this.floatAge) + 1);
+          this.jumpToAge(target, true);
+        });
+
+        // スライダー操作
+        this.els.slider.addEventListener('input', (e) => {
+          this.pause();
+          this.floatAge = parseFloat(e.target.value);
+          this.lastIntAge = Math.floor(this.floatAge);
+          // 巻き戻した年齢より未来のイベントは再度発動できるようにする
+          for (const ev of EVENT_PLUGINS) {
+            if (ev.age > this.lastIntAge) this.triggeredEvents.delete(ev.id);
+          }
+          this.updateUI(false);
+        });
+
+        // 年齢ショートカットボタン（22歳・30歳・⚡35歳・40歳・⚡45歳・50歳・65歳）
+        document.querySelectorAll('.jump-btn').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            await SoundEngine.init();
+            this.pause();
+            const targetAge = parseInt(btn.dataset.jumpAge, 10);
+            this.jumpToAge(targetAge);
+            // ⚡ショートカットを押した場合は該当イベントカードをすぐ確認できる
+            if (this.eventsEnabled && (btn.id === 'jump-ev-35' || btn.id === 'jump-ev-45')) {
+              const ev = EVENT_PLUGINS.find((p) => p.age === targetAge);
+              if (ev) {
+                this.triggeredEvents.add(ev.id);
+                this.showEventModal(ev, false);
+              }
+            }
+          });
+        });
+
+        // スピード切替
+        document.querySelectorAll('.speed-btn').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            this.speed = parseFloat(btn.dataset.speed);
+            document.querySelectorAll('.speed-btn').forEach((b) => {
+              b.className = 'speed-btn px-2 sm:px-2.5 h-9 rounded-lg text-xs font-bold text-slate-600 hover:bg-white/70 transition';
+            });
+            btn.className = 'speed-btn px-2 sm:px-2.5 h-9 rounded-lg text-xs font-bold bg-white text-slate-900 shadow-sm transition';
+          });
+        });
+
+        // 効果音切替
+        this.els.btnSound.addEventListener('click', async () => {
+          SoundEngine.enabled = !SoundEngine.enabled;
+          if (SoundEngine.enabled) {
+            await SoundEngine.init();
+            this.els.soundIcon.textContent = '🔊';
+            this.els.soundLabel.textContent = '音ON';
+          } else {
+            this.els.soundIcon.textContent = '🔇';
+            this.els.soundLabel.textContent = '音OFF';
+          }
+        });
+
+        // 設定モーダル開閉
+        const openModal = () => {
+          this.els.infoModal.classList.remove('hidden');
+          this.els.infoModal.classList.add('flex');
+        };
+        const closeModal = () => {
+          this.els.infoModal.classList.add('hidden');
+          this.els.infoModal.classList.remove('flex');
+        };
+        this.els.btnInfo.addEventListener('click', openModal);
+        this.els.btnCloseModal.addEventListener('click', closeModal);
+        this.els.btnOkModal.addEventListener('click', closeModal);
+        this.els.infoModal.addEventListener('click', (e) => {
+          if (e.target === this.els.infoModal) closeModal();
+        });
+      },
+
+      play() {
+        if (this.isPlaying) return;
+        this.isPlaying = true;
+        this.lastFrameTime = performance.now();
+        this.els.playIcon.textContent = '⏸';
+        this.els.playText.textContent = '一時停止';
+        this.els.btnPlay.classList.remove('from-blue-600', 'to-indigo-600');
+        this.els.btnPlay.classList.add('from-slate-800', 'to-slate-900');
+        requestAnimationFrame((t) => this.loop(t));
+      },
+
+      pause() {
+        this.isPlaying = false;
+        this.els.playIcon.textContent = '▶';
+        this.els.playText.textContent = this.floatAge >= SIMULATION_CONFIG.endAge ? 'もういちど' : 'スタート';
+        this.els.btnPlay.classList.remove('from-slate-800', 'to-slate-900');
+        this.els.btnPlay.classList.add('from-blue-600', 'to-indigo-600');
+      },
+
+      reset(shouldPause = true) {
+        if (shouldPause) this.pause();
+        this.floatAge = SIMULATION_CONFIG.startAge;
+        this.lastIntAge = SIMULATION_CONFIG.startAge;
+        this.achievedRegMilestones.clear();
+        this.achievedNonRegMilestones.clear();
+        this.triggeredEvents.clear();
+        this.updateUI(false);
+      },
+
+      jumpToAge(targetAge, triggerFx = false) {
+        this.floatAge = targetAge;
+        this.lastIntAge = Math.floor(targetAge);
+        for (const ev of EVENT_PLUGINS) {
+          if (ev.age > this.lastIntAge) this.triggeredEvents.delete(ev.id);
+        }
+        this.updateUI(triggerFx);
+      },
+
+      /**
+       * メインアニメーションループ
+       */
+      loop(now) {
+        if (!this.isPlaying) return;
+        const dt = Math.min(0.1, (now - this.lastFrameTime) / 1000);
+        this.lastFrameTime = now;
+
+        const prevIntAge = this.lastIntAge;
+        this.floatAge += dt * this.yearsPerSecondBase * this.speed;
+
+        const currentIntAge = Math.floor(this.floatAge);
+        let yearAdvanced = false;
+        if (currentIntAge > this.lastIntAge && currentIntAge <= SIMULATION_CONFIG.endAge) {
+          this.lastIntAge = currentIntAge;
+          yearAdvanced = true;
+        }
+
+        // もしもイベントON時：該当年齢に到達したら一時停止してイベントカードを表示
+        if (this.eventsEnabled && yearAdvanced) {
+          const ev = EVENT_PLUGINS.find(
+            (p) => p.age > prevIntAge && p.age <= currentIntAge && !this.triggeredEvents.has(p.id)
+          );
+          if (ev) {
+            this.triggeredEvents.add(ev.id);
+            this.floatAge = ev.age + 0.5; // その年の影響が見やすい位置で止める
+            this.lastIntAge = ev.age;
+            this.updateUI(true);
+            this.pause();
+            this.showEventModal(ev, true);
+            return;
+          }
+        }
+
+        if (this.floatAge >= SIMULATION_CONFIG.endAge) {
+          this.floatAge = SIMULATION_CONFIG.endAge;
+          this.updateUI(true);
+          SoundEngine.playGoalFanfare();
+          this.pause();
+          return;
+        }
+
+        this.updateUI(yearAdvanced);
+        requestAnimationFrame((t) => this.loop(t));
+      },
+
+      /**
+       * 画面上の全表示を現在の年齢状態・モードに同期
+       */
+      updateUI(triggerYearFx) {
+        const mode = this.viewMode;
+        const isDisp = mode === 'disposable';
+        const modeCfg = SIMULATION_CONFIG.modes[mode];
+        const s = getStateAtAge(this.floatAge, mode);
+
+        // 1. 年齢・スライダー・差額・倍率バッジ
+        this.els.displayAge.textContent = s.intAge;
+        this.els.slider.value = s.floatAge.toFixed(2);
+        this.els.workYearsLabel.textContent = `勤務 ${s.workYear}年目`;
+        this.els.diffTotal.textContent = formatYen(s.diffTotal, true);
+        this.els.diffEquiv.textContent = getDiffEquivalentText(s.diffTotal);
+        this.els.ratioBadge.textContent =
+          s.floatAge <= SIMULATION_CONFIG.startAge + 0.05
+            ? 'スタート'
+            : `約${s.ratio.toFixed(1)}倍`;
+
+        // ステージ＆解説コメント更新（モード別に切替）
+        const commentaryList = isDisp
+          ? SIMULATION_CONFIG.commentariesDisposable
+          : SIMULATION_CONFIG.commentariesGross;
+        const comment = commentaryList.find(
+          (c) => s.intAge >= c.minAge && s.intAge <= c.maxAge
+        ) || commentaryList[0];
+        this.els.stageBadge.textContent = comment.stage;
+        this.els.commentaryText.textContent = s.activeEvent
+          ? `${s.activeEvent.icon} ${s.activeEvent.age}歳イベント中：${s.activeEvent.title}（保障のちがいに注目！）`
+          : comment.text;
+
+        // 2. 正規雇用カード更新
+        this.els.regAnnual.textContent = formatYen(s.regAnnual, isDisp);
+        this.els.regTotal.textContent = formatYen(s.regTotal);
+        if (isDisp) {
+          const extraTxt = s.regExtraCost > 0 ? ` − 医療${s.regExtraCost}万` : '';
+          this.els.regBreakdown.textContent = `手取り${s.regTakeHome}万 − 生活費${SIMULATION_CONFIG.livingCostAnnual}万${extraTxt}`;
+        } else {
+          this.els.regBreakdown.textContent = `月給 約${(s.regBase / 12).toFixed(1)}万 ＋ 賞与 約${s.regBonus}万`;
+        }
+        const regPct = Math.max(1.5, Math.min(100, (Math.max(0, s.regTotal) / modeCfg.maxScaleTotal) * 100));
+        this.els.regBarH.style.width = `${regPct}%`;
+        this.els.regTower.style.height = `${regPct}%`;
+
+        // 3. 非正規雇用カード更新
+        this.els.nonRegAnnual.textContent = formatYen(s.nonRegAnnual, isDisp);
+        this.els.nonRegAnnual.className =
+          s.nonRegAnnual < 0
+            ? 'text-base sm:text-lg font-num font-black text-rose-600 tabular-nums leading-tight'
+            : 'text-base sm:text-lg font-num font-black text-amber-900 tabular-nums leading-tight';
+        this.els.nonRegTotal.textContent = formatYen(s.nonRegTotal);
+        if (isDisp) {
+          const extraTxt = s.nonRegExtraCost > 0 ? ` − 医療${s.nonRegExtraCost}万` : '';
+          this.els.nonRegBreakdown.textContent = `手取り${s.nonRegTakeHome}万 − 生活費${SIMULATION_CONFIG.livingCostAnnual}万${extraTxt}`;
+        } else {
+          this.els.nonRegBreakdown.textContent = `月給 約${(s.nonRegBase / 12).toFixed(1)}万 ＋ 賞与 ${s.nonRegBonus}万`;
+        }
+        const nonRegPct = Math.max(1.5, Math.min(100, (Math.max(0, s.nonRegTotal) / modeCfg.maxScaleTotal) * 100));
+        this.els.nonRegBarH.style.width = `${nonRegPct}%`;
+        this.els.nonRegTower.style.height = `${nonRegPct}%`;
+
+        // 3.5 イベント発生年のバッジ表示
+        if (s.activeEvent) {
+          this.els.regEventChip.textContent = s.activeEvent.regChip;
+          this.els.regEventChip.classList.remove('hidden');
+          this.els.nonRegEventChip.textContent = s.activeEvent.nonRegChip;
+          this.els.nonRegEventChip.classList.remove('hidden');
+        } else {
+          this.els.regEventChip.classList.add('hidden');
+          this.els.nonRegEventChip.classList.add('hidden');
+        }
+
+        // 4. マイルストーン点灯更新
+        this.updateMilestones('reg', s.regTotal, this.achievedRegMilestones, 'bg-blue-50 border-blue-200 text-blue-800');
+        this.updateMilestones('nonreg', s.nonRegTotal, this.achievedNonRegMilestones, 'bg-amber-50 border-amber-200 text-amber-800');
+
+        // 5. 年齢が1つ進んだ瞬間のエフェクト（ボーナス／収支演出・効果音）
+        if (triggerYearFx) {
+          SoundEngine.playYearTick(s.intAge);
+          if (isDisp) {
+            this.spawnFxTag(
+              this.els.regFxLayer,
+              `${formatYen(s.regAnnual, true)}`,
+              s.regAnnual >= 0 ? 'bg-blue-600 text-white' : 'bg-rose-600 text-white'
+            );
+            this.spawnFxTag(
+              this.els.nonRegFxLayer,
+              `${formatYen(s.nonRegAnnual, true)}`,
+              s.nonRegAnnual >= 0 ? 'bg-amber-500 text-white' : 'bg-rose-600 text-white'
+            );
+          } else {
+            this.spawnFxTag(this.els.regFxLayer, `✨賞与 +${s.regBonus}万`, 'bg-blue-600 text-white');
+            this.spawnFxTag(
+              this.els.nonRegFxLayer,
+              s.activeEvent ? `⚠ ${s.nonRegAnnual}万` : `+${s.nonRegAnnual}万`,
+              s.activeEvent ? 'bg-rose-600 text-white' : 'bg-amber-500 text-white'
+            );
+          }
+        }
+
+        // 6. リアルタイムグラフ描画
+        ChartRenderer.draw(s.floatAge);
+      },
+
+      /**
+       * マイルストーンの点灯・消灯（巻き戻し・モード切替にも対応）
+       */
+      updateMilestones(prefix, total, achievedSet, activeClasses) {
+        const milestones = SIMULATION_CONFIG.modes[this.viewMode].milestones;
+        milestones.forEach((m, idx) => {
+          const el = document.getElementById(`${prefix}-ms-${idx}`);
+          if (!el) return;
+          const reached = total >= m.amount;
+          if (reached) {
+            if (!achievedSet.has(idx)) {
+              achievedSet.add(idx);
+              el.className = `px-2 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-bold flex items-center gap-1 border shadow-sm animate-pop-in ${activeClasses}`;
+            }
+          } else {
+            if (achievedSet.has(idx)) achievedSet.delete(idx);
+            el.className = 'px-2 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-bold flex items-center gap-1 border border-slate-200 bg-slate-50 text-slate-400 opacity-45 transition-all duration-200';
+          }
+        });
+      },
+
+      /**
+       * キャラクター横にふわっと浮かぶ収入・ボーナス演出
+       */
+      spawnFxTag(container, text, colorClass) {
+        if (!container) return;
+        const badge = document.createElement('div');
+        badge.className = `absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 rounded-full text-[10px] font-black shadow-sm animate-float-up pointer-events-none z-20 ${colorClass}`;
+        badge.textContent = text;
+        container.appendChild(badge);
+        setTimeout(() => badge.remove(), 860);
+      },
+    };
+
+    // ページ読み込み完了後にアプリを起動
+    window.addEventListener('DOMContentLoaded', () => {
+      SimulationApp.init();
+    });
+  </script>
+</body>
+</html>
